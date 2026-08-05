@@ -1,12 +1,94 @@
 ﻿<Window x:Class="FileTidy.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:FileTidy.App"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+        Title="文件整理助手" Height="560" Width="900" MinWidth="720" MinHeight="420">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+    <DockPanel>
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}" />
+            </StatusBarItem>
+        </StatusBar>
+        <Border DockPanel.Dock="Top" Margin="8,4,8,0" Padding="6" Background="#F8D7DA"
+                Visibility="{Binding HasErrorDetails, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding ErrorDetails}" Foreground="#842029" TextWrapping="Wrap" MaxHeight="90" />
+        </Border>
+        <ToolBarTray DockPanel.Dock="Top">
+            <ToolBar>
+                <Button Content="预览结果" Command="{Binding PreviewCommand}" />
+                <Button Content="立即整理" Command="{Binding TidyCommand}" />
+                <Button Content="撤销上次整理" Command="{Binding UndoCommand}" />
+                <Separator />
+                <CheckBox Content="自动整理" IsChecked="{Binding AutoTidy}" />
+            </ToolBar>
+        </ToolBarTray>
+        <Grid Margin="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <Button DockPanel.Dock="Top" Content="＋ 新建规则" Command="{Binding AddRuleCommand}" Margin="0,0,0,4" />
+                <ListBox ItemsSource="{Binding EditorVms}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedEditor}" />
+            </DockPanel>
+            <Grid Grid.Column="1" Margin="8,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="{Binding SelectedEditor.Name, FallbackValue=未选择规则}" FontWeight="Bold" />
+                    <TextBlock Text="{Binding SelectedEditor.ErrorSummary, FallbackValue=请在左侧选择或新建规则}" Foreground="Red" TextWrapping="Wrap" />
+                </StackPanel>
+                <DataGrid Grid.Row="1" MaxHeight="220" Margin="0,8,0,8" AutoGenerateColumns="False"
+                          ItemsSource="{Binding PreviewRows}" IsReadOnly="True">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <!-- 冲突/未命中的文件标黄提示 -->
+                                <DataTrigger Binding="{Binding Warned}" Value="True">
+                                    <Setter Property="Background" Value="#FFF3CD" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="源文件" Binding="{Binding Source}" Width="*" />
+                        <DataGridTextColumn Header="目标路径" Binding="{Binding Dest}" Width="*" />
+                        <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="70" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TabControl Grid.Row="2">
+                    <TabItem Header="规则">
+                        <StackPanel Margin="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="名称" /><TextBox Grid.Column="1" Text="{Binding SelectedEditor.Name, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="1" Text="源文件夹" /><TextBox Grid.Column="1" Grid.Row="1" Text="{Binding SelectedEditor.SourcePath, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="2" Text="目标文件夹" /><TextBox Grid.Column="1" Grid.Row="2" Text="{Binding SelectedEditor.TargetPath, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="3" Text="扩展名(逗号分隔)" /><TextBox Grid.Column="1" Grid.Row="3" Text="{Binding SelectedEditor.Extensions, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="4" Text="关键词(逗号分隔)" /><TextBox Grid.Column="1" Grid.Row="4" Text="{Binding SelectedEditor.Keywords, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="5" Text="N天前(0禁用)" /><TextBox Grid.Column="1" Grid.Row="5" Text="{Binding SelectedEditor.AgeDays, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                            <CheckBox Content="包含子文件夹" IsChecked="{Binding SelectedEditor.IncludeSubfolders}" />
+                            <CheckBox Content="排除目标文件夹树" IsChecked="{Binding SelectedEditor.ExcludeTargetTree}" />
+                            <CheckBox Content="冲突时自动追加序号" IsChecked="{Binding SelectedEditor.AutoRenameOnConflict}" />
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem Header="设置">
+                        <StackPanel Margin="8">
+                            <CheckBox Content="开机自启" IsChecked="{Binding StartWithWindows}" />
+                            <CheckBox Content="新规则默认冲突时自动追加序号" IsChecked="{Binding AutoRenameOnConflict}" />
+                            <TextBlock Margin="0,16,0,0" Text="Pro 功能（即将推出）：正则条件、重命名模板、重复文件检测"
+                                       Foreground="Gray" FontSize="11" />
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Grid>
+    </DockPanel>
 </Window>
