@@ -107,7 +107,7 @@ public class MainViewModel : ObservableObject
         AutoRenameOnConflict = rule.AutoRenameOnConflict,
         Extensions = string.Join(", ", rule.Conditions.OfType<ExtensionCondition>().SelectMany(c => c.Extensions)),
         Keywords = string.Join(", ", rule.Conditions.OfType<KeywordCondition>().Select(c => c.Keyword)),
-        AgeDays = rule.Conditions.OfType<AgeCondition>().Select(c => c.Days).FirstOrDefault()
+        AgeDays = rule.Conditions.OfType<AgeCondition>().Select(c => c.Days).FirstOrDefault().ToString()
     };
 
     /// <summary>新增规则并自动选中（新规则继承全局冲突序号开关）</summary>

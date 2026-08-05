@@ -26,9 +26,12 @@ public class RuleEditorViewModel : ObservableObject
     public string Keywords { get => _keywords; set => SetProperty(ref _keywords, value); }
     private string _keywords = "";
 
-    /// <summary>期限（天），0 表示不启用日期条件</summary>
-    public int AgeDays { get => _age; set => SetProperty(ref _age, value); }
-    private int _age = 0;
+    /// <summary>期限（天）文本，空/非法按 0 处理；0 表示不启用日期条件</summary>
+    public string AgeDays { get => _age; set => SetProperty(ref _age, value); }
+    private string _age = "0";
+
+    /// <summary>解析后的有效期天数，非法或非正数返回 0（禁用）</summary>
+    private int AgeDaysParsed => int.TryParse(AgeDays, out var days) && days > 0 ? days : 0;
 
     private List<string>? _errors;
 
@@ -100,7 +103,7 @@ public class RuleEditorViewModel : ObservableObject
     private int ConditionsCount()
         => (Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
          + (Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
-         + (AgeDays > 0 ? 1 : 0);
+         + (AgeDaysParsed > 0 ? 1 : 0);
 
     /// <summary>将编辑器状态写回 Rule 模型</summary>
     public void ApplyToModel()
@@ -115,6 +118,6 @@ public class RuleEditorViewModel : ObservableObject
         var kws = Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var kw in kws)
             Model.Conditions.Add(new KeywordCondition { Keyword = kw });
-        if (AgeDays > 0) Model.Conditions.Add(new AgeCondition { Days = AgeDays });
+        if (AgeDaysParsed > 0) Model.Conditions.Add(new AgeCondition { Days = AgeDaysParsed });
     }
 }

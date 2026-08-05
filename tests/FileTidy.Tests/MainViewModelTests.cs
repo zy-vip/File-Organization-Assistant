@@ -56,6 +56,19 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public void RuleEditor_ApplyToModel_EmptyAgeText_DisablesAgeCondition()
+    {
+        var vm = new RuleEditorViewModel();
+        vm.Name = "清空期限"; vm.SourcePath = _dir; vm.TargetPath = Path.Combine(_dir, "t");
+        vm.AgeDays = ""; // 清空输入框后不应产生日期条件
+        vm.ApplyToModel();
+        Assert.Empty(vm.Model.Conditions.OfType<AgeCondition>());
+        vm.AgeDays = "30";
+        vm.ApplyToModel();
+        Assert.Single(vm.Model.Conditions.OfType<AgeCondition>());
+    }
+
+    [Fact]
     public void RuleEditor_Validation_RejectsSourceInsideTarget()
     {
         var vm = new RuleEditorViewModel();
