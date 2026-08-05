@@ -85,4 +85,40 @@ public static class Organizer
             throw;
         }
     }
+
+    /// <summary>撤销结果</summary>
+    public class UndoResult
+    {
+        public int Restored { get; set; }
+        public List<OrganizeItem> Skipped { get; set; } = new();
+    }
+
+    /// <summary>按记录反向移动还原文件；目标文件缺失则跳过并记入 Skipped，不中断其余条目</summary>
+    public static UndoResult Undo(OperationRecord record)
+    {
+        var result = new UndoResult();
+        foreach (var entry in record.Entries.AsEnumerable().Reverse())
+        {
+            if (!File.Exists(entry.Dest))
+            {
+                result.Skipped.Add(new OrganizeItem { Source = entry.Source, Dest = entry.Dest, Reason = "文件已不存在" });
+                continue;
+            }
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(entry.Source)!);
+                Move(entry.Dest, entry.Source);
+                result.Restored++;
+            }
+            catch (IOException ex)
+            {
+                result.Skipped.Add(new OrganizeItem { Source = entry.Source, Dest = entry.Dest, Reason = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                result.Skipped.Add(new OrganizeItem { Source = entry.Source, Dest = entry.Dest, Reason = ex.Message });
+            }
+        }
+        return result;
+    }
 }
