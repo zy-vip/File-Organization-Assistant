@@ -66,10 +66,35 @@ public class RuleEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(SourcePath) || !Directory.Exists(SourcePath)) errors.Add("源文件夹不存在");
         if (string.IsNullOrWhiteSpace(TargetPath)) errors.Add("目标文件夹不能为空");
         if (ConditionsCount() == 0) errors.Add("至少需要一个条件");
-        if (TargetPath.Length > 0 && SourcePath.Length > 0
-            && Path.GetFullPath(TargetPath).TrimEnd('\\').StartsWith(Path.GetFullPath(SourcePath).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-            errors.Add("目标文件夹位于源文件夹内部，可能导致循环整理");
+        CheckTreeRelation(errors);
         return errors;
+    }
+
+    /// <summary>检查源/目标树包含关系：目标在源内部会导致循环整理，源在目标内部会被排除目标树逻辑滤空</summary>
+    private void CheckTreeRelation(List<string> errors)
+    {
+        if (TargetPath.Length == 0 || SourcePath.Length == 0) return;
+        try
+        {
+            var src = Path.GetFullPath(SourcePath).TrimEnd('\\') + '\\';
+            var tgt = Path.GetFullPath(TargetPath).TrimEnd('\\');
+            if (tgt.StartsWith(src, StringComparison.OrdinalIgnoreCase))
+                errors.Add("目标文件夹位于源文件夹内部，可能导致循环整理");
+            else if (src.StartsWith(tgt + '\\', StringComparison.OrdinalIgnoreCase))
+                errors.Add("源文件夹位于目标文件夹内部，源文件会被排除导致无文件可整理（循环风险）");
+        }
+        catch (ArgumentException)
+        {
+            errors.Add("路径包含非法字符");
+        }
+        catch (PathTooLongException)
+        {
+            errors.Add("路径过长");
+        }
+        catch (NotSupportedException)
+        {
+            errors.Add("路径格式不受支持");
+        }
     }
 
     private int ConditionsCount()
@@ -86,8 +111,10 @@ public class RuleEditorViewModel : ObservableObject
         Model.Conditions.Clear();
         var exts = Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (exts.Length > 0) Model.Conditions.Add(new ExtensionCondition { Extensions = exts.ToList() });
+        // 每个关键词独立成条件（任一命中即触发），避免逗号分隔输入被静默丢弃
         var kws = Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (kws.Length > 0) Model.Conditions.Add(new KeywordCondition { Keyword = kws[0] });
+        foreach (var kw in kws)
+            Model.Conditions.Add(new KeywordCondition { Keyword = kw });
         if (AgeDays > 0) Model.Conditions.Add(new AgeCondition { Days = AgeDays });
     }
 }

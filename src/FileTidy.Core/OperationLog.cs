@@ -34,10 +34,13 @@ public class OperationLog
                     .Select(p => new FileInfo(p))
                     .OrderBy(f => f.Name);
 
-    /// <summary>保存一份记录（文件名含时间戳，天然有序）</summary>
+    /// <summary>保存一份记录（文件名含时间戳，天然有序；同毫秒碰撞时追加序号防覆盖）</summary>
     public void Save(OperationRecord record)
     {
-        var path = Path.Combine(_dir, $"op-{record.Timestamp:yyyyMMddHHmmssfff}.json");
+        var baseName = $"op-{record.Timestamp:yyyyMMddHHmmssfff}";
+        var path = Path.Combine(_dir, baseName + ".json");
+        for (var i = 1; File.Exists(path); i++)
+            path = Path.Combine(_dir, $"{baseName}-{i}.json");
         File.WriteAllText(path, JsonSerializer.Serialize(record));
         Trim();
     }

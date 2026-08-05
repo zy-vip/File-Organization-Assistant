@@ -20,24 +20,34 @@ public static class FileScanner
 
     private static void ScanDir(string dir, bool recursive, HashSet<string> excludeSet, List<FileEntry> results)
     {
-        foreach (var file in Directory.EnumerateFiles(dir))
+        try
         {
-            if (excludeSet.Contains(Full(file))) continue;
-            var fi = new FileInfo(file);
-            results.Add(new FileEntry
+            foreach (var file in Directory.EnumerateFiles(dir))
             {
-                FullPath = file,
-                FileName = fi.Name,
-                Extension = fi.Extension.TrimStart('.').ToLowerInvariant(),
-                LastWriteTime = fi.LastWriteTime
-            });
+                if (excludeSet.Contains(Full(file))) continue;
+                var fi = new FileInfo(file);
+                results.Add(new FileEntry
+                {
+                    FullPath = file,
+                    FileName = fi.Name,
+                    Extension = fi.Extension.TrimStart('.').ToLowerInvariant(),
+                    LastWriteTime = fi.LastWriteTime
+                });
+            }
         }
+        catch (UnauthorizedAccessException) { /* 无权限子目录：跳过，不中断整个扫描 */ }
+        catch (IOException) { /* 目录被并发删除/占用：跳过 */ }
         if (!recursive) return;
-        foreach (var sub in Directory.EnumerateDirectories(dir))
+        try
         {
-            if (excludeSet.Contains(Full(sub))) continue;
-            ScanDir(sub, true, excludeSet, results);
+            foreach (var sub in Directory.EnumerateDirectories(dir))
+            {
+                if (excludeSet.Contains(Full(sub))) continue;
+                ScanDir(sub, true, excludeSet, results);
+            }
         }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
     }
 
     private static string Full(string path) => Path.GetFullPath(path).TrimEnd('\\', '/') + '\\';

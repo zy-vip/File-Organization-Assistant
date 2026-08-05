@@ -33,7 +33,7 @@ public sealed class TrayIcon : IDisposable
         var tidy = new MenuItem { Header = "立即整理" };
         tidy.Click += async (_, _) => await _vm.TidyCommand.ExecuteAsync();
         var quit = new MenuItem { Header = "退出" };
-        quit.Click += (_, _) => Application.Current.Shutdown();
+        quit.Click += (_, _) => App.ExitApp();
         menu.Items.Add(open); menu.Items.Add(tidy); menu.Items.Add(quit);
         return menu;
     }

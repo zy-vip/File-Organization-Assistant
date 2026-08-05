@@ -12,12 +12,14 @@ public static class ConfigSerializer
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    /// <summary>保存配置到指定路径（目录自动创建）</summary>
+    /// <summary>保存配置到指定路径（目录自动创建；临时文件 + 原子替换，避免崩溃中断导致配置丢失）</summary>
     public static void Save(FileTidyConfig config, string path)
     {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(path, JsonSerializer.Serialize(config, Options));
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(config, Options));
+        File.Move(tmp, path, overwrite: true);
     }
 
     /// <summary>从指定路径加载配置；文件不存在或损坏时返回默认配置</summary>

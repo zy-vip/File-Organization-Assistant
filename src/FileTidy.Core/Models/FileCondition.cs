@@ -30,11 +30,11 @@ public sealed class KeywordCondition : FileCondition
         => Keyword.Length > 0 && file.FileName.Contains(Keyword, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>日期条件：最后修改时间距今 ≥ N 天</summary>
+/// <summary>日期条件：最后修改时间距今 ≥ N 天（N ≤ 0 视为未启用）</summary>
 public sealed class AgeCondition : FileCondition
 {
     public int Days { get; set; }
 
     public override bool IsMatch(FileEntry file, DateTime now)
-        => (now - file.LastWriteTime).TotalDays >= Days;
+        => Days > 0 && (now - file.LastWriteTime).TotalDays >= Days;
 }

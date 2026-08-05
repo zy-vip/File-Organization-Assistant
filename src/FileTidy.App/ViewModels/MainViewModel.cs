@@ -19,6 +19,7 @@ public class MainViewModel : ObservableObject
 {
     private readonly SettingsService _settings;
     private readonly Func<DateTime> _now;
+    private readonly string _operationsDir;
     private readonly EngageQueue _queue = new();
     private readonly FolderWatcher _watcher = new();
 
@@ -47,6 +48,7 @@ public class MainViewModel : ObservableObject
     public RelayCommand TidyCommand { get; }
     public RelayCommand UndoCommand { get; }
     public RelayCommand AddRuleCommand { get; }
+    public RelayCommand DeleteRuleCommand { get; }
 
     public RuleEditorViewModel? SelectedEditor
     {
@@ -55,14 +57,20 @@ public class MainViewModel : ObservableObject
     }
     private RuleEditorViewModel? _selected;
 
-    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null)
+    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null, string? operationsDir = null)
     {
         _settings = settings;
         _now = coreTimeProvider ?? (() => DateTime.Now);
+        _operationsDir = operationsDir ?? AppPaths.OperationsDir;
         PreviewCommand = new RelayCommand(PreviewAsync);
         TidyCommand = new RelayCommand(TidyAsync);
         UndoCommand = new RelayCommand(UndoAsync);
         AddRuleCommand = new RelayCommand(() => { AddRule(); return Task.CompletedTask; });
+        DeleteRuleCommand = new RelayCommand(() =>
+        {
+            if (SelectedEditor is not null) DeleteRule(SelectedEditor);
+            return Task.CompletedTask;
+        });
         // 事件订阅只做一次；开关状态由 AutoTidyAsync 内部检查，避免开启/关闭失效
         _watcher.TidyTriggered += () => _ = AutoTidyAsync();
         LoadConfig();
@@ -98,7 +106,7 @@ public class MainViewModel : ObservableObject
         ExcludeTargetTree = rule.ExcludeTargetTree,
         AutoRenameOnConflict = rule.AutoRenameOnConflict,
         Extensions = string.Join(", ", rule.Conditions.OfType<ExtensionCondition>().SelectMany(c => c.Extensions)),
-        Keywords = rule.Conditions.OfType<KeywordCondition>().Select(c => c.Keyword).FirstOrDefault() ?? "",
+        Keywords = string.Join(", ", rule.Conditions.OfType<KeywordCondition>().Select(c => c.Keyword)),
         AgeDays = rule.Conditions.OfType<AgeCondition>().Select(c => c.Days).FirstOrDefault()
     };
 
@@ -185,22 +193,30 @@ public class MainViewModel : ObservableObject
                 BuildPreview();
                 return true;
             });
+            SetErrorDetails(Array.Empty<OrganizeItem>(), Array.Empty<OrganizeItem>());
             StatusText = $"预览完成，共 {PreviewRows.Count} 个文件";
         }
         catch (InvalidOperationException)
         {
             StatusText = "整理正在进行中，请稍候";
         }
+        catch (Exception ex)
+        {
+            StatusText = "预览失败";
+            SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
+        }
         finally { Busy = false; }
     }
 
-    private void BuildPreview()
+    /// <summary>构建预览并填充表格；返回完整预览条目列表（供执行直接复用，避免二次扫描）</summary>
+    private List<PreviewEntry> BuildPreview()
     {
         var now = _now();
         PreviewRows.Clear();
         foreach (var vm in EditorVms) vm.ApplyToModel();
         var files = ScanAllSources();
-        foreach (var p in PreviewService.Build(Rules.ToList(), files, now))
+        var previews = PreviewService.Build(Rules.ToList(), files, now);
+        foreach (var p in previews)
         {
             PreviewRows.Add(new PreviewRow
             {
@@ -212,6 +228,7 @@ public class MainViewModel : ObservableObject
                 Warned = p.Status != PreviewStatus.Moved
             });
         }
+        return previews;
     }
 
     /// <summary>合并所有规则的源文件（去重）——保证单轮不重复处理</summary>
@@ -235,11 +252,12 @@ public class MainViewModel : ObservableObject
             await _queue.RunAsync(async () =>
             {
                 await Task.Yield();
-                BuildPreview();
-                var previews = CollectPreviews();
-                if (previews.Count == 0) { StatusText = "没有需要整理的文件"; return false; }
-                var (result, record) = Organizer.Execute(previews, _now());
-                new OperationLog(AppPaths.OperationsDir, _retention).Save(record);
+                var previews = BuildPreview();
+                // 只执行真正要移动的条目：无命中/冲突未启用序号时不应落盘空日志
+                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                if (movable.Count == 0) { StatusText = "没有需要整理的文件"; return false; }
+                var (result, record) = Organizer.Execute(movable, _now());
+                new OperationLog(_operationsDir, _retention).Save(record);
                 SetErrorDetails(result.Failed, result.Skipped);
                 StatusText = $"整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}";
                 return true;
@@ -249,11 +267,13 @@ public class MainViewModel : ObservableObject
         {
             StatusText = "整理正在进行中，请稍候";
         }
+        catch (Exception ex)
+        {
+            StatusText = "整理失败";
+            SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
+        }
         finally { Busy = false; }
     }
-
-    private List<PreviewEntry> CollectPreviews()
-        => PreviewService.Build(Rules.ToList(), ScanAllSources(), _now());
 
     private async Task UndoAsync()
     {
@@ -264,7 +284,7 @@ public class MainViewModel : ObservableObject
             await _queue.RunAsync(async () =>
             {
                 await Task.Yield();
-                var log = new OperationLog(AppPaths.OperationsDir, _retention);
+                var log = new OperationLog(_operationsDir, _retention);
                 var record = log.Latest();
                 if (record is null) { StatusText = "没有可撤销的操作"; return false; }
                 var result = Organizer.Undo(record);
@@ -277,6 +297,11 @@ public class MainViewModel : ObservableObject
         catch (InvalidOperationException)
         {
             StatusText = "整理正在进行中，请稍候";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "撤销失败";
+            SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
         }
         finally { Busy = false; }
     }
@@ -293,20 +318,29 @@ public class MainViewModel : ObservableObject
             await _queue.RunAsync(async () =>
             {
                 await Task.Yield();
-                var previews = CollectPreviews();
-                if (previews.Count == 0) return false;
-                var (result, record) = Organizer.Execute(previews, _now());
-                new OperationLog(AppPaths.OperationsDir, _retention).Save(record);
+                var previews = BuildPreview();
+                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                if (movable.Count == 0) return false;
+                var (result, record) = Organizer.Execute(movable, _now());
+                new OperationLog(_operationsDir, _retention).Save(record);
                 TidyCompleted?.Invoke($"自动整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}");
                 return true;
             });
         }
         catch (InvalidOperationException) { }
+        catch (Exception ex)
+        {
+            TidyCompleted?.Invoke($"自动整理失败：{ex.Message}");
+        }
     }
 
-    /// <summary>应用退出前的收尾：保存配置并停止监听</summary>
+    private bool _shutdown;
+
+    /// <summary>应用退出前的收尾：保存配置并停止监听（幂等，可被窗口关闭与退出流程重复调用）</summary>
     public void Shutdown()
     {
+        if (_shutdown) return;
+        _shutdown = true;
         Save();
         _watcher.Dispose();
     }

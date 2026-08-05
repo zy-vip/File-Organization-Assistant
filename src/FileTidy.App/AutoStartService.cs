@@ -19,7 +19,8 @@ public static class AutoStartService
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
         if (enabled)
-            key?.SetValue(ValueName, AppPaths.ExePath);
+            // 带 --autostart 参数：启动时驻留托盘而不弹主窗口
+            key?.SetValue(ValueName, $"\"{AppPaths.ExePath}\" --autostart");
         else
             key?.DeleteValue(ValueName, throwOnMissingValue: false);
     }

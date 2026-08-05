@@ -9,6 +9,16 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainViewModel? _vm;
 
+    /// <summary>应用是否正在退出（托盘"退出"触发；窗口关闭仅隐藏，不退出进程）</summary>
+    public static bool IsExiting { get; private set; }
+
+    /// <summary>正式的退出入口：置标志后关闭应用，让窗口 Closing 放行</summary>
+    public static void ExitApp()
+    {
+        IsExiting = true;
+        Current.Shutdown();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

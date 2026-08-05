@@ -49,4 +49,14 @@ public class OperationLogTests : IDisposable
     {
         Assert.Null(new OperationLog(_dir, 10).Latest());
     }
+
+    [Fact]
+    public void Retention_ClampsToAtLeastOne()
+    {
+        var log = new OperationLog(_dir, 0); // 0 应被钳制为 1
+        for (var i = 0; i < 3; i++)
+            log.Save(new OperationRecord { Timestamp = DateTime.Now.AddMinutes(i), Entries = { new LogEntry { Source = i.ToString(), Dest = "d" } } });
+
+        Assert.Single(Directory.GetFiles(_dir, "*.json")); // 0 被钳制为 1 份
+    }
 }

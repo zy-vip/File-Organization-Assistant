@@ -55,4 +55,14 @@ public class ConfigSerializerTests
         Assert.Empty(loaded.Rules);
         Assert.False(loaded.AutoTidyEnabled);
     }
+
+    [Fact]
+    public void Load_CorruptedJson_ReturnsDefaultConfig()
+    {
+        var dir = Directory.CreateTempSubdirectory("filedity");
+        var path = Path.Combine(dir.FullName, "broken.json");
+        File.WriteAllText(path, "{ 这不是合法 JSON !!!");
+        var loaded = ConfigSerializer.Load(path);
+        Assert.Empty(loaded.Rules);
+    }
 }

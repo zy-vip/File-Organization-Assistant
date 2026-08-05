@@ -1,9 +1,10 @@
 namespace FileTidy.Core;
 
-/// <summary>文件夹监听：文件新增/重命名/变更触发事件；缓冲溢出时自动重建监听</summary>
+/// <summary>文件夹监听：文件新增/重命名/变更触发事件；缓冲溢出时自动重建监听并触发一次重扫</summary>
 public sealed class FolderWatcher : IDisposable
 {
     private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly object _lock = new();
     private bool _disposed;
 
     /// <summary>有文件变更时触发（由调用方决定延迟与整理）</summary>
@@ -12,29 +13,37 @@ public sealed class FolderWatcher : IDisposable
     /// <summary>开始监听指定文件夹（已监听过的自动去重）</summary>
     public void Watch(IReadOnlyList<string> folders)
     {
-        foreach (var folder in folders.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+        var targets = folders.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        lock (_lock)
         {
-            if (_watchers.Any(w => string.Equals(w.Path.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
-                continue;
-            var watcher = new FileSystemWatcher(folder)
+            if (_disposed) return;
+            foreach (var folder in targets)
             {
-                IncludeSubdirectories = true,
-                InternalBufferSize = 64 * 1024
-            };
-            watcher.Created += OnChanged;
-            watcher.Renamed += OnChanged;
-            watcher.Changed += OnChanged;
-            watcher.Error += OnError;
-            watcher.EnableRaisingEvents = true;
-            _watchers.Add(watcher);
+                if (_watchers.Any(w => string.Equals(w.Path.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var watcher = new FileSystemWatcher(folder)
+                {
+                    IncludeSubdirectories = true,
+                    InternalBufferSize = 64 * 1024
+                };
+                watcher.Created += OnChanged;
+                watcher.Renamed += OnChanged;
+                watcher.Changed += OnChanged;
+                watcher.Error += OnError;
+                watcher.EnableRaisingEvents = true;
+                _watchers.Add(watcher);
+            }
         }
     }
 
     /// <summary>以新列表整体替换监听集合（先清空再按新列表 Watch），用于规则增删/源路径变更</summary>
     public void Replace(IReadOnlyList<string> folders)
     {
-        foreach (var w in _watchers) w.Dispose();
-        _watchers.Clear();
+        lock (_lock)
+        {
+            foreach (var w in _watchers) w.Dispose();
+            _watchers.Clear();
+        }
         Watch(folders);
     }
 
@@ -43,19 +52,28 @@ public sealed class FolderWatcher : IDisposable
 
     private void OnError(object sender, ErrorEventArgs e)
     {
-        // 缓冲溢出：重建监听（保留原路径），后续事件触发时由调用方做整目录重扫
-        foreach (var w in _watchers.ToList())
+        // 缓冲溢出：重建监听（保留原路径）并触发一次重扫，避免溢出期间的文件变更永久丢失
+        List<string> paths;
+        lock (_lock)
         {
-            try { w.EnableRaisingEvents = false; w.EnableRaisingEvents = true; }
-            catch { }
+            paths = _watchers.Select(w => w.Path).ToList();
+            foreach (var w in _watchers.ToList())
+            {
+                try { w.EnableRaisingEvents = false; w.EnableRaisingEvents = true; }
+                catch { }
+            }
         }
+        if (paths.Count > 0) TidyTriggered?.Invoke();
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        foreach (var w in _watchers) w.Dispose();
-        _watchers.Clear();
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            foreach (var w in _watchers) w.Dispose();
+            _watchers.Clear();
+        }
     }
 }

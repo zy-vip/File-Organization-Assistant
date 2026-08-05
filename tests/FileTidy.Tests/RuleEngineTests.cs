@@ -42,6 +42,14 @@ public class RuleEngineTests
     }
 
     [Fact]
+    public void Age_NegativeDaysNeverMatches()
+    {
+        // 配置被手工改成负值时不应让所有文件永久命中
+        var rule = new Rule { Conditions = { new AgeCondition { Days = -1 } } };
+        Assert.False(RuleEngine.IsMatch(rule, File("old.txt", DateTime.Now.AddYears(-1)), DateTime.Now));
+    }
+
+    [Fact]
     public void Conditions_OrSemantics()
     {
         var rule = new Rule

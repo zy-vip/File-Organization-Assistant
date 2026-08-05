@@ -69,7 +69,7 @@ public static class Organizer
 
     private static void Move(string source, string dest)
     {
-        if (Path.GetPathRoot(Path.GetFullPath(source)) == Path.GetPathRoot(Path.GetFullPath(dest)))
+        if (string.Equals(Path.GetPathRoot(Path.GetFullPath(source)), Path.GetPathRoot(Path.GetFullPath(dest)), StringComparison.OrdinalIgnoreCase))
         {
             File.Move(source, dest);
             return;
