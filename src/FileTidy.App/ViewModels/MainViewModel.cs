@@ -27,8 +27,18 @@ public class MainViewModel : ObservableObject
     public ObservableCollection<PreviewRow> PreviewRows { get; } = new();
     public string StatusText { get => _status; private set => SetProperty(ref _status, value); }
     public bool Busy { get => _busy; private set => SetProperty(ref _busy, value); }
-    public bool AutoTidy { get => _auto; set => SetProperty(ref _auto, value); }
-    private string _status = "就绪"; private bool _busy; private bool _auto;
+    private string _status = "就绪"; private bool _busy;
+
+    /// <summary>自动整理开关：变更即保存并刷新监听列表（Replace 在 Save 内统一处理）</summary>
+    public bool AutoTidy
+    {
+        get => _auto;
+        set
+        {
+            if (SetProperty(ref _auto, value)) Save();
+        }
+    }
+    private bool _auto;
 
     /// <summary>操作日志保留份数（构造时从配置加载，默认 10）</summary>
     private int _retention = 10;
@@ -132,7 +142,19 @@ public class MainViewModel : ObservableObject
     }
     private bool _globalRename = true;
 
-    public bool StartWithWindows { get => _startup; set => SetProperty(ref _startup, value); }
+    /// <summary>开机自启开关：变更即写注册表并保存</summary>
+    public bool StartWithWindows
+    {
+        get => _startup;
+        set
+        {
+            if (SetProperty(ref _startup, value))
+            {
+                AutoStartService.SetEnabled(value);
+                Save();
+            }
+        }
+    }
     private bool _startup;
 
     /// <summary>整理失败/跳过明细（界面红字展示，失败原因列表）</summary>
