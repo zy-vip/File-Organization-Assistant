@@ -15,4 +15,10 @@ public class Rule
     public bool ExcludeTargetTree { get; set; } = true;
     /// <summary>冲突时自动追加序号</summary>
     public bool AutoRenameOnConflict { get; set; } = true;
+
+    /// <summary>动作列表（单动作模型：至多 1 个；缺省为空 = MoveAction，兼容一期配置）</summary>
+    public List<RuleAction> Actions { get; set; } = new();
+
+    /// <summary>生效动作：Actions 非空取第一个，否则视为纯移动（一期配置兼容）</summary>
+    public RuleAction EffectiveAction => Actions.Count > 0 ? Actions[0] : new MoveAction();
 }
