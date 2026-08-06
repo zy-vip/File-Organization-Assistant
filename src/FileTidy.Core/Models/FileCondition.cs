@@ -6,6 +6,7 @@ namespace FileTidy.Core.Models;
 [JsonDerivedType(typeof(ExtensionCondition), "extension")]
 [JsonDerivedType(typeof(KeywordCondition), "keyword")]
 [JsonDerivedType(typeof(AgeCondition), "age")]
+[JsonDerivedType(typeof(RegexCondition), "regex")]
 public abstract class FileCondition
 {
     /// <summary>判断文件是否满足条件</summary>
