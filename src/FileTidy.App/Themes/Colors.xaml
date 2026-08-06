@@ -23,6 +23,8 @@
     <SolidColorBrush x:Key="BrWarning" Color="#F59E0B"/>
     <SolidColorBrush x:Key="BrError" Color="#EF4444"/>
     <SolidColorBrush x:Key="BrPro" Color="#D97706"/>
+    <!-- Pro 徽标浅底（与 BrPro 同族） -->
+    <SolidColorBrush x:Key="BrProSoft" Color="#FBF0E0"/>
 
     <!-- 预览状态行浅底色 -->
     <SolidColorBrush x:Key="BrRowMoved" Color="#EAF9F1"/>

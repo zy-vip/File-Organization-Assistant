@@ -83,4 +83,18 @@ public class AppResourcesLoadTests
     [Fact]
     public void MergedDictionaries_LoadWithoutException()
         => RunSta(app => Assert.Equal(3, app.Resources.MergedDictionaries.Count));
+
+    [Fact]
+    public void Controls_AllCoreKeys_Exist()
+        => RunSta(app =>
+        {
+            foreach (var key in new[]
+            {
+                "BaseButton", "AccentButton", "SecondaryButton", "IconButton",
+                "FormTextBox", "FormComboBox", "FormCheckBox",
+                "CardBorder", "ProBadge", "CardTitleText", "FieldLabel",
+                "PageTitleText", "PageSubtitleText"
+            })
+                Assert.NotNull(app.Resources[key]);
+        });
 }
