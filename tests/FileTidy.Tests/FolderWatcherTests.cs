@@ -61,4 +61,34 @@ public class FolderWatcherTests : IDisposable
         await Task.Delay(300);
         Assert.True(count <= 2, $"同一文件不应触发多次（实际 {count} 次）");
     }
+
+    [Fact]
+    public async Task Replace_OldFolderNoLongerTriggers()
+    {
+        // Replace 后旧目录的监听必须失效；新目录仍触发（watcher 存活）
+        var dir2 = Path.Combine(Path.GetTempPath(), "watch3-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir2);
+        try
+        {
+            _watcher = new FolderWatcher();
+            var count = 0;
+            _watcher.TidyTriggered += () => count++;
+            _watcher.Watch(new[] { _dir });
+            _watcher.Replace(new[] { dir2 });
+
+            File.WriteAllText(Path.Combine(_dir, "old.txt"), "x");
+            await Task.Delay(500);
+            var afterOld = count;
+
+            File.WriteAllText(Path.Combine(dir2, "new.txt"), "x");
+            await Task.Delay(500);
+
+            Assert.Equal(0, afterOld);           // 旧目录已停止监听
+            Assert.True(count > afterOld);       // 新目录仍触发
+        }
+        finally
+        {
+            Directory.Delete(dir2, true);
+        }
+    }
 }
