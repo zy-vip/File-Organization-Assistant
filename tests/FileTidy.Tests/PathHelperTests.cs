@@ -25,4 +25,24 @@ public class PathHelperTests : IDisposable
         var p = Path.Combine(_dir, "a.txt");
         Assert.Equal(p, PathHelper.GetUniquePath(p));
     }
+
+    [Fact]
+    public void GetUniquePath_NoExtension_AppendsNumber()
+    {
+        // 无扩展名文件：扩展名为空时序号拼接不得出错
+        var p = Path.Combine(_dir, "报告");
+        File.WriteAllText(p, "x");
+
+        Assert.Equal(Path.Combine(_dir, "报告(1)"), PathHelper.GetUniquePath(p));
+    }
+
+    [Fact]
+    public void GetUniquePath_DirectoryOccupied_AppendsNumber()
+    {
+        // 目标路径被目录占用时同样追加序号（Directory.Exists 分支）
+        var p = Path.Combine(_dir, "目录");
+        Directory.CreateDirectory(p);
+
+        Assert.Equal(Path.Combine(_dir, "目录(1)"), PathHelper.GetUniquePath(p));
+    }
 }
