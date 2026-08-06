@@ -12,6 +12,12 @@ public static class AppPaths
     /// <summary>操作日志目录</summary>
     public static string OperationsDir => Path.Combine(Root, "operations");
 
+    /// <summary>激活码文件路径</summary>
+    public static string LicenseFile => Path.Combine(Root, "license.json");
+
+    /// <summary>试用状态文件路径</summary>
+    public static string TrialFile => Path.Combine(Root, "trial.json");
+
     /// <summary>当前可执行文件路径</summary>
     public static string ExePath => Environment.ProcessPath ?? "";
 
