@@ -133,4 +133,53 @@ public class MainViewModelTests : IDisposable
         Assert.Contains("没有需要整理的文件", vm.StatusText);
         Assert.Empty(Directory.GetFiles(opsDir, "*.json")); // 不落空日志
     }
+
+    [Fact]
+    public void LoadConfig_PopulatesEditorList()
+    {
+        // 回归：启动时已存规则必须出现在左侧规则列表（EditorVms），否则 UI 看不到已有规则
+        var opsDir = Path.Combine(_dir, "ops");
+        Directory.CreateDirectory(opsDir);
+        var config = new FileTidyConfig { AutoTidyEnabled = true };
+        config.Rules.Add(new Rule
+        {
+            Name = "旧规则",
+            SourcePath = Path.Combine(_dir, "src"),
+            TargetPath = Path.Combine(_dir, "target"),
+            Conditions = { new ExtensionCondition { Extensions = { "pdf" } } }
+        });
+        new SettingsService(Path.Combine(_dir, "config.json")).Save(config);
+
+        var vm = new MainViewModel(new SettingsService(Path.Combine(_dir, "config.json")),
+            coreTimeProvider: () => DateTime.Now, operationsDir: opsDir);
+
+        Assert.Single(vm.EditorVms);
+        Assert.Equal("旧规则", vm.EditorVms[0].Name);
+        Assert.Single(vm.EditorVms[0].Model.Conditions);
+        Assert.Same(vm.EditorVms[0], vm.SelectedEditor);
+    }
+
+    [Fact]
+    public async Task AutoTidy_WatchesSource_DropsNewFile_MovesIt()
+    {
+        var srcDir = Path.Combine(_dir, "src"); var targetDir = Path.Combine(_dir, "target");
+        var opsDir = Path.Combine(_dir, "ops");
+        Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+
+        var vm = NewVm(opsDir);
+        vm.AddRule();
+        vm.SelectedEditor!.Name = "PDF"; vm.SelectedEditor.SourcePath = srcDir; vm.SelectedEditor.TargetPath = targetDir;
+        vm.SelectedEditor.AddExtension("pdf");
+        vm.AutoTidy = true; // 开启后注册监听
+
+        var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.TidyCompleted += msg => done.TrySetResult(msg);
+
+        File.WriteAllText(Path.Combine(srcDir, "新文件.pdf"), "x");
+
+        var msg = await done.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Contains("成功", msg);
+        Assert.True(File.Exists(Path.Combine(targetDir, "新文件.pdf")));
+        Assert.Single(Directory.GetFiles(opsDir, "*.json")); // 自动整理同样写入日志
+    }
 }

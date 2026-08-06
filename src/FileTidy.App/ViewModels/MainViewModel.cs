@@ -84,8 +84,11 @@ public class MainViewModel : ObservableObject
         foreach (var rule in config.Rules)
         {
             Rules.Add(rule);
-            Attach(FromRule(rule));
+            var vm = FromRule(rule);
+            Attach(vm);
+            EditorVms.Add(vm); // 已存规则同样出现在左侧列表
         }
+        if (EditorVms.Count > 0) SelectedEditor = EditorVms[0];
         AutoTidy = config.AutoTidyEnabled;
         StartWithWindows = config.StartWithWindows;
         AutoRenameOnConflict = config.AutoRenameOnConflict;
@@ -208,14 +211,21 @@ public class MainViewModel : ObservableObject
         finally { Busy = false; }
     }
 
-    /// <summary>构建预览并填充表格；返回完整预览条目列表（供执行直接复用，避免二次扫描）</summary>
-    private List<PreviewEntry> BuildPreview()
+    /// <summary>构建预览并填充表格（render=true 时刷新 PreviewRows；自动整理走后台线程，仅计算不渲染避免跨线程改 UI 集合）</summary>
+    private List<PreviewEntry> BuildPreview(bool render = true)
     {
         var now = _now();
-        PreviewRows.Clear();
         foreach (var vm in EditorVms) vm.ApplyToModel();
         var files = ScanAllSources();
         var previews = PreviewService.Build(Rules.ToList(), files, now);
+        if (render) RenderPreviews(previews);
+        return previews;
+    }
+
+    /// <summary>把预览结果填入表格（必须在 UI 线程调用）</summary>
+    private void RenderPreviews(List<PreviewEntry> previews)
+    {
+        PreviewRows.Clear();
         foreach (var p in previews)
         {
             PreviewRows.Add(new PreviewRow
@@ -228,7 +238,6 @@ public class MainViewModel : ObservableObject
                 Warned = p.Status != PreviewStatus.Moved
             });
         }
-        return previews;
     }
 
     /// <summary>合并所有规则的源文件（去重）——保证单轮不重复处理</summary>
@@ -317,9 +326,9 @@ public class MainViewModel : ObservableObject
         {
             await _queue.RunAsync(async () =>
             {
-                await Task.Yield();
-                var previews = BuildPreview();
-                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+await Task.Yield();
+                    var previews = BuildPreview(render: false);
+                    var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
                 if (movable.Count == 0) return false;
                 var (result, record) = Organizer.Execute(movable, _now());
                 new OperationLog(_operationsDir, _retention).Save(record);
