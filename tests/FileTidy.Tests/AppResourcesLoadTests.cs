@@ -97,4 +97,8 @@ public class AppResourcesLoadTests
             })
                 Assert.NotNull(app.Resources[key]);
         });
+
+    [Fact]
+    public void Switch_Key_Exists()
+        => RunSta(app => Assert.NotNull(app.Resources["SwitchStyle"]));
 }
