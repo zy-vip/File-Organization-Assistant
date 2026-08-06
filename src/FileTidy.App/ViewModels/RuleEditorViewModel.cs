@@ -131,8 +131,7 @@ public class RuleEditorViewModel : ObservableObject
         => (Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
          + (Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
          + (AgeDaysParsed > 0 ? 1 : 0)
-         + (RegexPattern.Length > 0 ? 1 : 0);
-
+         + (!string.IsNullOrWhiteSpace(RegexPattern) ? 1 : 0);
     /// <summary>将编辑器状态写回 Rule 模型</summary>
     public void ApplyToModel()
     {
@@ -140,7 +139,8 @@ public class RuleEditorViewModel : ObservableObject
         Model.IncludeSubfolders = IncludeSubfolders; Model.ExcludeTargetTree = ExcludeTargetTree;
         Model.AutoRenameOnConflict = AutoRenameOnConflict;
         Model.Conditions.Clear();
-        if (RegexPattern.Length > 0)
+        // 空白正则不写入（与校验口径一致，避免永不命中的空条件）
+        if (!string.IsNullOrWhiteSpace(RegexPattern))
             Model.Conditions.Add(new RegexCondition { Pattern = RegexPattern, IgnoreCase = !RegexCaseSensitive });
         var exts = Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (exts.Length > 0) Model.Conditions.Add(new ExtensionCondition { Extensions = exts.ToList() });
@@ -150,7 +150,9 @@ public class RuleEditorViewModel : ObservableObject
             Model.Conditions.Add(new KeywordCondition { Keyword = kw });
         if (AgeDaysParsed > 0) Model.Conditions.Add(new AgeCondition { Days = AgeDaysParsed });
         Model.Actions.Clear();
-        Model.Actions.Add(ActionType == "moveRename" && TemplateRenderer.Validate(RenameTemplate).Count == 0
+        // 选中 moveRename 时始终写 MoveAndRenameAction：非法模板由运行时按"模板错误"展示，
+        // 而不是静默降级为 MoveAction 丢失模板文本
+        Model.Actions.Add(ActionType == "moveRename"
             ? new MoveAndRenameAction { Template = RenameTemplate }
             : new MoveAction());
     }

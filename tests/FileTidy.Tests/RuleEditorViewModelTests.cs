@@ -5,13 +5,16 @@ using FileTidy.Core.Models;
 
 namespace FileTidy.Tests;
 
-public class RuleEditorViewModelTests
+public class RuleEditorViewModelTests : IDisposable
 {
+    private readonly string _dir = Directory.CreateTempSubdirectory("ed").FullName;
+    public void Dispose() => Directory.Delete(_dir, true);
+
     [Fact]
     public void Validation_InvalidRegexReportsError()
     {
         var vm = new RuleEditorViewModel();
-        vm.Name = "r"; vm.SourcePath = Directory.CreateTempSubdirectory("ed").FullName;
+        vm.Name = "r"; vm.SourcePath = _dir;
         vm.TargetPath = Path.Combine(vm.SourcePath, "out"); vm.Extensions = "jpg";
         vm.RegexPattern = "(";
         var errors = vm.Validate();
@@ -22,7 +25,7 @@ public class RuleEditorViewModelTests
     public void Validation_InvalidTemplateReportsError()
     {
         var vm = new RuleEditorViewModel();
-        vm.Name = "r"; vm.SourcePath = Directory.CreateTempSubdirectory("ed2").FullName;
+        vm.Name = "r"; vm.SourcePath = _dir;
         vm.TargetPath = Path.Combine(vm.SourcePath, "out"); vm.Extensions = "jpg";
         vm.ActionType = "moveRename"; vm.RenameTemplate = "{unknown}";
         var errors = vm.Validate();
@@ -56,5 +59,26 @@ public class RuleEditorViewModelTests
         var vm = new RuleEditorViewModel();
         vm.ApplyToModel();
         Assert.IsType<MoveAction>(vm.Model.Actions[0]);
+    }
+
+    [Fact]
+    public void ApplyToModel_InvalidTemplateKeepsRenameAction()
+    {
+        // 非法模板不得被静默降级为 MoveAction 且丢失模板文本
+        var vm = new RuleEditorViewModel();
+        vm.ActionType = "moveRename"; vm.RenameTemplate = "{unknown}";
+        vm.ApplyToModel();
+        var a = Assert.IsType<MoveAndRenameAction>(vm.Model.Actions[0]);
+        Assert.Equal("{unknown}", a.Template);
+    }
+
+    [Fact]
+    public void ApplyToModel_WhitespaceRegex_NotPersisted()
+    {
+        // 空白正则与校验口径一致：不写入条件（运行时永不命中）
+        var vm = new RuleEditorViewModel();
+        vm.RegexPattern = " ";
+        vm.ApplyToModel();
+        Assert.Empty(vm.Model.Conditions.OfType<RegexCondition>());
     }
 }

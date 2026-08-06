@@ -6,13 +6,15 @@ using FileTidy.Core.Models;
 
 namespace FileTidy.Tests;
 
-public class RuleActionTests
+public class RuleActionTests : IDisposable
 {
+    private readonly string _dir = Directory.CreateTempSubdirectory("action").FullName;
+    public void Dispose() => Directory.Delete(_dir, true);
+
     [Fact]
     public void Serialize_ActionRoundTrips()
     {
-        var dir = Directory.CreateTempSubdirectory("action").FullName;
-        var path = Path.Combine(dir, "c.json");
+        var path = Path.Combine(_dir, "c.json");
         var rule = new Rule
         {
             Name = "重命名",

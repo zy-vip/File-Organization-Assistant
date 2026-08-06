@@ -327,20 +327,16 @@ public class MainViewModel : ObservableObject
                 await Task.Yield();
                 _license.RecordTidyUse();
                 var previews = BuildPreview();
-                // 只执行真正要移动的条目：无命中/冲突未启用序号时不应落盘空日志
+                // 传完整批次给 Organizer：NeedsPro 计跳过、TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
                 var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                if (movable.Count == 0)
+                var blocked = previews.Where(p => p.Status is PreviewStatus.NeedsPro or PreviewStatus.TemplateError).ToList();
+                if (movable.Count == 0 && blocked.Count == 0)
                 {
-                    // 修正 C：无文件可移动但存在 Pro 拦截时给出跳过明细（含 Pro 提示），否则提示无文件
-                    var blocked = previews.Where(p => p.Status == PreviewStatus.NeedsPro)
-                        .Select(p => new OrganizeItem { Source = p.File.FullPath, Reason = $"需要 Pro 解锁（{p.BlockedFeature}）" })
-                        .ToList();
-                    if (blocked.Count > 0) SetErrorDetails(Array.Empty<OrganizeItem>(), blocked);
                     StatusText = "没有需要整理的文件";
-                    return false;
+                    return false; // 无任何可执行/可报告条目，不落空日志
                 }
-                var (result, record) = Organizer.Execute(movable, _now());
-                new OperationLog(_operationsDir, _retention).Save(record);
+                var (result, record) = Organizer.Execute(previews, _now());
+                if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
                 SetErrorDetailsWithProHint(result.Failed, result.Skipped);
                 StatusText = $"整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}";
                 return true;
@@ -403,9 +399,10 @@ await _queue.RunAsync(async () =>
 await Task.Yield();
                     _license.RecordTidyUse();
                     var previews = BuildPreview(render: false);
+                    // 传完整批次：NeedsPro/TemplateError 计入跳过/失败统计
                     var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
                 if (movable.Count == 0) return false;
-                var (result, record) = Organizer.Execute(movable, _now());
+                var (result, record) = Organizer.Execute(previews, _now());
                 new OperationLog(_operationsDir, _retention).Save(record);
                 TidyCompleted?.Invoke($"自动整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}");
                 return true;

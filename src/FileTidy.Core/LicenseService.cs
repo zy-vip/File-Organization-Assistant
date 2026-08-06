@@ -24,6 +24,12 @@ public class LicenseService
     private readonly int _trialTidyLimit;
     private readonly Func<DateTime> _now;
 
+    // 缓存：激活状态只在 Activate 后变化、试用文件只在 RecordTidyUse 后变化，
+    // 避免 IsAllowed 对每个文件重复读盘（再校验失败会丢签名，丢失缓存命中）。
+    private bool? _activated;
+    private TrialFile? _cachedTrial;
+    private bool _trialLoaded;
+
     public LicenseService(string publicKeyPem, string licenseFile, string trialFile,
                           int trialDays = 14, int trialTidyLimit = 20, Func<DateTime>? now = null)
     {
@@ -61,8 +67,10 @@ public class LicenseService
     {
         var trial = LoadTrial();
         if (trial is null) return null;
-        var remainingDays = _trialDays - (int)(_now().Date - trial.StartedAt.Date).TotalDays;
-        return new TrialInfo { RemainingDays = Math.Max(0, remainingDays), RemainingTidy = Math.Max(0, _trialTidyLimit - trial.TidyCount) };
+        var elapsedDays = (int)(_now().Date - trial.StartedAt.Date).TotalDays;
+        // 剩余天数 clamp 到 [0, 试用上限]：时钟回拨/手改导致开始时间在未来时不得延展试用
+        var remainingDays = Math.Clamp(_trialDays - elapsedDays, 0, _trialDays);
+        return new TrialInfo { RemainingDays = remainingDays, RemainingTidy = Math.Max(0, _trialTidyLimit - trial.TidyCount) };
     }
 
     /// <summary>激活：验证签名成功则写盘；返回 (是否成功, 提示文案)</summary>
@@ -70,11 +78,14 @@ public class LicenseService
     {
         if (LicenseCodec.Verify(code.Trim(), _publicKey) is null)
             return (false, "激活码无效，请检查后重试");
+        var dir = Path.GetDirectoryName(_licenseFile);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         File.WriteAllText(_licenseFile, JsonSerializer.Serialize(new LicenseFile
         {
             Code = code.Trim(),
             ActivatedAt = _now()
         }));
+        _activated = true;
         return (true, "激活成功，已解锁全部 Pro 功能");
     }
 
@@ -100,30 +111,42 @@ public class LicenseService
                .Distinct()
                .ToList();
 
-    private bool IsActivated() => File.Exists(_licenseFile) && LoadLicense() is not null;
+    private bool IsActivated()
+    {
+        if (_activated is not null) return _activated.Value;
+        _activated = File.Exists(_licenseFile) && LoadLicense() is not null;
+        return _activated.Value;
+    }
 
     private LicenseFile? LoadLicense()
     {
         try
         {
-            return JsonSerializer.Deserialize<LicenseFile>(File.ReadAllText(_licenseFile));
+            var file = JsonSerializer.Deserialize<LicenseFile>(File.ReadAllText(_licenseFile));
+            // 复验存储的激活码签名：手工伪造 license.json 不得生效
+            if (file is not null && LicenseCodec.Verify(file.Code, _publicKey) is null) return null;
+            return file;
         }
         catch (Exception) { return null; }
     }
 
     private TrialFile? LoadTrial()
     {
+        if (_trialLoaded) return _cachedTrial;
         if (File.Exists(_trialFile))
         {
             try
             {
-                return JsonSerializer.Deserialize<TrialFile>(File.ReadAllText(_trialFile));
+                _cachedTrial = JsonSerializer.Deserialize<TrialFile>(File.ReadAllText(_trialFile));
+                _trialLoaded = true;
+                return _cachedTrial;
             }
             catch (Exception) { /* 损坏按新试用重算 */ }
         }
-        var trial = new TrialFile { StartedAt = _now(), TidyCount = 0 };
-        SaveTrial(trial);
-        return trial;
+        _cachedTrial = new TrialFile { StartedAt = _now(), TidyCount = 0 };
+        SaveTrial(_cachedTrial);
+        _trialLoaded = true;
+        return _cachedTrial;
     }
 
     private void SaveTrial(TrialFile trial)

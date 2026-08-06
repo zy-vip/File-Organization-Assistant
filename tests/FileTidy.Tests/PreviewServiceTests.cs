@@ -5,8 +5,11 @@ using FileTidy.Core.Models;
 
 namespace FileTidy.Tests;
 
-public class PreviewServiceTests
+public class PreviewServiceTests : IDisposable
 {
+    private readonly string _dir = Directory.CreateTempSubdirectory("preview").FullName;
+    public void Dispose() => Directory.Delete(_dir, true);
+
     private static FileEntry MakeFile(string name)
         => new()
         {
@@ -50,17 +53,16 @@ public class PreviewServiceTests
     [Fact]
     public void Build_AutoRenamesOnDestConflict()
     {
-        var dir = Directory.CreateTempSubdirectory("preview").FullName;
-        var target = Path.Combine(dir, "target");
+        var target = Path.Combine(_dir, "target");
         Directory.CreateDirectory(target);
         File.WriteAllText(Path.Combine(target, "a.jpg"), "existing");
 
         var rules = new List<Rule>
         {
-            new() { Name = "图", SourcePath = dir, TargetPath = target,
+            new() { Name = "图", SourcePath = _dir, TargetPath = target,
                     Conditions = { new ExtensionCondition { Extensions = { "jpg" } } } }
         };
-        var srcFile = Path.Combine(dir, "a.jpg");
+        var srcFile = Path.Combine(_dir, "a.jpg");
         File.WriteAllText(srcFile, "new");
 
         var file = new FileEntry { FullPath = srcFile, FileName = "a.jpg", Extension = "jpg", LastWriteTime = DateTime.Now };

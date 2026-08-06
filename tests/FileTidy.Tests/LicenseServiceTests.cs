@@ -1,6 +1,7 @@
 // tests/FileTidy.Tests/LicenseServiceTests.cs
 using System.IO;
 using System.Security.Cryptography;
+using System.Text.Json;
 using FileTidy.Core;
 using FileTidy.Core.Models;
 
@@ -133,6 +134,73 @@ public class LicenseServiceTests : IDisposable
         var svc = NewService();
         Assert.Equal(LicenseState.Trial, svc.GetState());
         Assert.NotNull(svc.GetTrialInfo());
+    }
+
+    [Fact]
+    public void LicenseFileWithBadCode_NotActivated()
+    {
+        // 手工伪造 license.json（未附有效签名）不得生效，仍按试用处理
+        var dir2 = Directory.CreateTempSubdirectory("licbad").FullName;
+        try
+        {
+            var licensePath = Path.Combine(dir2, "license.json");
+            File.WriteAllText(licensePath, JsonSerializer.Serialize(new { Code = "FTID-AAAA-BBBB", ActivatedAt = DateTime.UtcNow }));
+            var svc = new LicenseService(_keys.PublicPem, licensePath, Path.Combine(dir2, "trial.json"));
+            Assert.Equal(LicenseState.Trial, svc.GetState());
+        }
+        finally { Directory.Delete(dir2, true); }
+    }
+
+    [Fact]
+    public void TrialInfo_ClockRollbackFutureStart_ClampsDaysToLimit()
+    {
+        // 时钟回拨导致试用开始时间在未来时，剩余天数不得超过试用上限
+        var dir2 = Directory.CreateTempSubdirectory("licdays").FullName;
+        try
+        {
+            var now = new DateTime(2026, 8, 6);
+            var licensePath = Path.Combine(dir2, "license.json");
+            var trialPath = Path.Combine(dir2, "trial.json");
+            var seed = new LicenseService(_keys.PublicPem, licensePath, trialPath, now: () => now);
+            seed.RecordTidyUse();
+            var svc = new LicenseService(_keys.PublicPem, licensePath, trialPath, now: () => now.AddDays(-30));
+            Assert.Equal(14, svc.GetTrialInfo()!.RemainingDays);
+        }
+        finally { Directory.Delete(dir2, true); }
+    }
+
+    [Fact]
+    public void GetState_InvalidatesCacheAfterRecordTidyUse()
+    {
+        // 状态缓存必须在试用计数耗尽后失效，反映为 Free
+        var dir2 = Directory.CreateTempSubdirectory("licstate").FullName;
+        try
+        {
+            var svc = new LicenseService(_keys.PublicPem, Path.Combine(dir2, "license.json"), Path.Combine(dir2, "trial.json"), trialTidyLimit: 2);
+            Assert.Equal(LicenseState.Trial, svc.GetState());
+            svc.RecordTidyUse(); svc.RecordTidyUse();
+            Assert.Equal(LicenseState.Free, svc.GetState());
+        }
+        finally { Directory.Delete(dir2, true); }
+    }
+
+    [Fact]
+    public void Activate_CreatesMissingDirectory()
+    {
+        var dir2 = Directory.CreateTempSubdirectory("licdir").FullName;
+        try
+        {
+            var nested = Path.Combine(dir2, "sub", "nested", "license.json");
+            var svc = new LicenseService(_keys.PublicPem, nested, Path.Combine(dir2, "sub", "trial.json"));
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(_keys.PrivatePem);
+            var code = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
+            var (ok, _) = svc.Activate(code);
+            Assert.True(ok);
+            Assert.True(File.Exists(nested), "Activate 应创建缺失目录");
+            Assert.Equal(LicenseState.Pro, svc.GetState());
+        }
+        finally { Directory.Delete(dir2, true); }
     }
 
     private string MakeCode()

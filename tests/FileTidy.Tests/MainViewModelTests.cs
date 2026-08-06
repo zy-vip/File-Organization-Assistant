@@ -274,6 +274,43 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Tidy_MovedAndProBlockedMixed_RecordsSkippedWithHint()
+    {
+        var dir = Directory.CreateTempSubdirectory("vm6").FullName;
+        try
+        {
+            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
+            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
+            File.WriteAllText(Path.Combine(srcDir, "b.png"), "x");
+
+            var (_, pub) = LicenseCodec.CreateKeyPair();
+            // 试用上限 1：首次 RecordTidyUse 后即耗尽 → 本轮 Pro 规则即被拦截（混合场景）
+            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"), trialTidyLimit: 1);
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
+            vm.Rules.Add(new Rule
+            {
+                Name = "免费", SourcePath = srcDir, TargetPath = targetDir,
+                Conditions = { new ExtensionCondition { Extensions = { "jpg" } } }
+            });
+            vm.Rules.Add(new Rule
+            {
+                Name = "正则", SourcePath = srcDir, TargetPath = targetDir,
+                Conditions = { new RegexCondition { Pattern = @"png" } }
+            });
+
+            await vm.TidyCommand.ExecuteAsync();
+
+            Assert.True(File.Exists(Path.Combine(targetDir, "a.jpg")), "免费文件应被移动");
+            Assert.False(File.Exists(Path.Combine(targetDir, "b.png")), "Pro 文件应被拦截");
+            Assert.Contains("跳过 1", vm.StatusText);
+            Assert.Contains("Pro", vm.ErrorDetails ?? "");
+            Assert.Contains("购买后可启用", vm.ErrorDetails);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void Activate_SetsProText()
     {
         var dir = Directory.CreateTempSubdirectory("vm4").FullName;

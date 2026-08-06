@@ -5,13 +5,15 @@ using FileTidy.Core.Models;
 
 namespace FileTidy.Tests;
 
-public class ConfigSerializerTests
+public class ConfigSerializerTests : IDisposable
 {
+    private readonly string _dir = Directory.CreateTempSubdirectory("filedity").FullName;
+    public void Dispose() => Directory.Delete(_dir, true);
+
     [Fact]
     public void SaveThenLoad_ReturnsSameConfig()
     {
-        var dir = Directory.CreateTempSubdirectory("filedity");
-        var path = Path.Combine(dir.FullName, "config.json");
+        var path = Path.Combine(_dir, "config.json");
         var config = new FileTidyConfig
         {
             AutoTidyEnabled = true,
@@ -49,8 +51,7 @@ public class ConfigSerializerTests
     [Fact]
     public void Load_MissingFile_ReturnsDefaultConfig()
     {
-        var dir = Directory.CreateTempSubdirectory("filedity");
-        var path = Path.Combine(dir.FullName, "none.json");
+        var path = Path.Combine(_dir, "none.json");
         var loaded = ConfigSerializer.Load(path);
         Assert.Empty(loaded.Rules);
         Assert.False(loaded.AutoTidyEnabled);
@@ -59,8 +60,7 @@ public class ConfigSerializerTests
     [Fact]
     public void Load_CorruptedJson_ReturnsDefaultConfig()
     {
-        var dir = Directory.CreateTempSubdirectory("filedity");
-        var path = Path.Combine(dir.FullName, "broken.json");
+        var path = Path.Combine(_dir, "broken.json");
         File.WriteAllText(path, "{ 这不是合法 JSON !!!");
         var loaded = ConfigSerializer.Load(path);
         Assert.Empty(loaded.Rules);
