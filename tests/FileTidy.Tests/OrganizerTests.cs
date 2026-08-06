@@ -110,4 +110,47 @@ public class OrganizerTests : IDisposable
         };
         Process.Start(psi)!.WaitForExit();
     }
+
+    [Fact]
+    public void Execute_AutoRenameOnConflict_WhenDestTakenAtRunTime()
+    {
+        // 预览时目标空闲；执行前目标被占用 → 执行期二次唯一化落到 a(1).txt
+        var src = Write("a.txt");
+        var dest = Path.Combine(_root, "out", "a.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        File.WriteAllText(dest, "occupied");
+
+        var (result, record) = Organizer.Execute(new List<PreviewEntry> { Moved(src, dest) }, DateTime.Now);
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.True(File.Exists(Path.Combine(_root, "out", "a(1).txt")));
+        Assert.False(File.Exists(src));
+        Assert.Equal(Path.Combine(_root, "out", "a(1).txt"), record.Entries[0].Dest);
+    }
+
+    [Fact]
+    public void Execute_NoLongerMatchesRule_GoesToSkipped()
+    {
+        // 预览于 6 天前进行（文件年龄 11 天 ≥ 10 命中）；执行时年龄 5 天 < 10 → 再校验失败
+        var src = Write("old.txt");
+        var now = new DateTime(2026, 8, 6, 12, 0, 0);
+        var entry = new PreviewEntry
+        {
+            File = new FileEntry { FullPath = src, FileName = "old.txt", Extension = "txt", LastWriteTime = now.AddDays(-5) },
+            MatchedRule = new Rule
+            {
+                TargetPath = Path.Combine(_root, "out"),
+                Conditions = { new AgeCondition { Days = 10 } }
+            },
+            DestPath = Path.Combine(_root, "out", "old.txt"),
+            Status = PreviewStatus.Moved
+        };
+
+        var (result, _) = Organizer.Execute(new List<PreviewEntry> { entry }, now);
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Single(result.Skipped);
+        Assert.Equal("不再匹配规则", result.Skipped[0].Reason);
+        Assert.True(File.Exists(src));
+    }
 }
