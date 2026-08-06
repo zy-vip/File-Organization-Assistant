@@ -1,0 +1,38 @@
+<!-- src/FileTidy.App/Themes/Colors.xaml -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 基础色板（浅色主题） -->
+    <SolidColorBrush x:Key="BrWindow" Color="#F5F6F8"/>
+    <SolidColorBrush x:Key="BrCard" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BrBorder" Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="BrText" Color="#1F2937"/>
+    <SolidColorBrush x:Key="BrTextSecondary" Color="#6B7280"/>
+    <SolidColorBrush x:Key="BrTextDisabled" Color="#9CA3AF"/>
+
+    <!-- 强调色（靛蓝→紫罗兰） -->
+    <LinearGradientBrush x:Key="BrushAccent" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#6366F1" Offset="0"/>
+        <GradientStop Color="#8B5CF6" Offset="1"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="BrushAccentHover" Color="#5E5CE6"/>
+    <SolidColorBrush x:Key="BrushAccentPressed" Color="#4F46E5"/>
+
+    <!-- 语义色 -->
+    <SolidColorBrush x:Key="BrSuccess" Color="#10B981"/>
+    <SolidColorBrush x:Key="BrWarning" Color="#F59E0B"/>
+    <SolidColorBrush x:Key="BrError" Color="#EF4444"/>
+    <SolidColorBrush x:Key="BrPro" Color="#D97706"/>
+
+    <!-- 预览状态行浅底色 -->
+    <SolidColorBrush x:Key="BrRowMoved" Color="#EAF9F1"/>
+    <SolidColorBrush x:Key="BrRowConflict" Color="#FFF3CD"/>
+    <SolidColorBrush x:Key="BrRowNeedsPro" Color="#FBF0E0"/>
+    <SolidColorBrush x:Key="BrRowTemplateError" Color="#FDE8E8"/>
+    <SolidColorBrush x:Key="BrRowNoMatch" Color="#F9FAFB"/>
+
+    <!-- 错误横幅（琥珀警示） -->
+    <SolidColorBrush x:Key="BrBannerBg" Color="#FFFBEB"/>
+    <SolidColorBrush x:Key="BrBannerBorder" Color="#FDE68A"/>
+    <SolidColorBrush x:Key="BrBannerText" Color="#92400E"/>
+</ResourceDictionary>
