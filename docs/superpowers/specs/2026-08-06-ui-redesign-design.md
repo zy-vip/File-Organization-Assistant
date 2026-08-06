@@ -44,7 +44,7 @@
 
 全部定义在 `App.xaml` 的 `Application.Resources` 资源字典，`MainWindow` 只引用不重复定义：
 
-Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）、TextBox、ComboBox、CheckBox、ListBox、DataGrid、TabControl、GroupBox、StatusBar、ToolTip。
+Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）、TextBox、ComboBox、CheckBox、ListBox、DataGrid、TabControl、Border（分组卡片统一样式）、StatusBar、ToolTip。
 
 ## 3. 窗口布局结构
 
@@ -66,8 +66,9 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 └────────────────────────────────────────────────────────────┘
 ```
 
-- **页头左上**：应用名 + 副标题行（授权状态小徽章绑定 `LicenseStateText` + 规则总数绑定 `EditorVms.Count`，均为既有属性）
+- **页头左上**：应用名 + MDL2 字形小图标（如 `\uE8B7` 文件夹）+ 副标题行（授权状态小徽章绑定 `LicenseStateText` + 规则总数绑定 `EditorVms.Count`，均为既有属性）
 - **页头右侧**：主操作「立即整理」蓝紫渐变按钮 + 次级「预览结果」「撤销上次」白底按钮 + **自动整理 Switch**
+- **Busy 禁用态**：`Busy` 为 true（预览/整理/撤销执行中）时，页头三个操作按钮禁用（绑定 `IsEnabled="{Binding Busy, Converter={StaticResource InverseBool}}"`，新增反向布尔转换器），防重复触发；`Busy` 属性为既有属性
 - **错误横幅**：琥珀色卡片（警示语义），错误 / 跳过明细共用，仅 `HasErrorDetails` 时显示
 - **左栏规则列表**：白底圆角卡片，新建/上移/下移/删除按钮收进卡片标题行
 - 状态栏保持现状内容与绑定（仅 `StatusText`），只做样式美化
@@ -111,11 +112,13 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 │  提示文字（成功绿 / 失败红）                             │
 └──────────────────────────────────────────────────────────┘
 ┌─ 常规（卡片）────────────────────────────────────────────┐
-│  [自动整理 Switch] 开机自启 Switch                        │
+│  [开机自启 Switch]                                        │
 │  [新规则默认冲突自动追加序号] CheckBox                    │
 └──────────────────────────────────────────────────────────┘
 ```
 
+- 「自动整理」开关只存在于页头（见第 3 节），设置页不重复放置，避免单一生效入口歧义
+- 激活提示的成功/失败颜色由 ViewModel 新增展示属性 `ActivateResultIsError` 判断（`Activate` 已返回 `(ok, message)`，VM 存储结果标志，纯展示层）
 - Pro 提示行（免费功能说明）保留在底部灰色小字
 
 ## 6. 实现约束
@@ -123,7 +126,10 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 ### 6.1 绑定与数据层（红线）
 
 - 所有 `Command` / `Property` 绑定原样保留，只改外观与局部容器
-- **ViewModel 层唯一新增**：`PreviewRow` 增加 `Status`（`PreviewStatus` 枚举）展示属性，`RenderPreviews` 一并填充；现有 `Warned` 保留兼容
+- **ViewModel 层新增（均为纯展示属性）**：
+  - `PreviewRow.Status`（`PreviewStatus` 枚举），`RenderPreviews` 一并填充；现有 `Warned` 保留兼容
+  - `ActivateResultIsError`（bool）：激活结果是否失败，供提示文字着色（`Activate` 返回值中的 ok 标志写入）
+  - `InverseBool` 转换器（App 层静态资源）：供 Busy 禁用态取反
 - 页头规则总数直接绑定 `EditorVms.Count`（既有集合，无需新属性）；「重命名模板」行显隐用 XAML `ElementName` 触发器（见第 4 节）
 - 行高亮触发器改用新枚举映射：绿=将移动 / 琥珀=冲突 / 金=需解锁Pro / 红=模板错误 / 灰=未命中
 - 图标用 Segoe MDL2 Assets、Switch 用 `ToggleButton` 自定义模板：**零新增 NuGet 依赖**
@@ -145,10 +151,12 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 1. 五类操作按钮（预览 / 立即整理 / 撤销 / 自动整理 / 规则增删移）功能正常
 2. 规则拖拽排序、上移 / 下移正常
 3. 正则与模板 Pro 徽标正确显示
-4. 激活流程 UI 走通（输入 → 激活 → 状态徽章变化）
+4. 激活流程 UI 走通（输入 → 激活 → 状态徽章变化，成功绿 / 失败红提示正确着色）
 5. 预览状态色正确（含「需解锁 Pro」金色）
 6. 窗口缩放至 MinWidth 720 不破版
 7. 托盘与开机自启不受影响
+8. Busy 期间页头操作按钮置灰不可点（预览 / 整理 / 撤销互斥）
+9. 设置页无自动整理开关（单一入口在页头）
 
 ## 8. 非目标（本期不做）
 
@@ -156,3 +164,5 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 - 新增页面（空状态引导、首次运行欢迎、统计卡片）
 - 文件夹浏览按钮（需要新命令，留作下期）
 - 信息架构大改（如设置抽屉）
+- 窗口标题栏图标（无现有 .ico 资源，需另行设计，本期页头仅用 MDL2 字形图标）
+- **托盘保持不变**：菜单（打开主界面 / 立即整理 / 退出）、双击打开、自动整理完成通知、关闭窗口隐藏到托盘，均不涉及样式改造
