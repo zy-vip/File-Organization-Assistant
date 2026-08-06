@@ -69,7 +69,7 @@ RegexCondition : FileCondition
 |------|------|------|
 | `{original}` | 原始文件名（含扩展名） | `{original}_new` → `report.pdf_new` |
 | `{name}` | 原始文件名（不含扩展名） | `{name}_v2` → `report_v2` |
-| `{ext}` | 原始扩展名（不含点，保留原样） | `图片{ext}` → `图片.jpg` |
+| `{ext}` | 原始扩展名（含点，保留原样） | `图片{ext}` → `图片.jpg` |
 | `{date:格式}` | 今天日期，格式用 .NET 日期格式串 | `{date:yyyyMMdd}` → `20260806` |
 | `{n}` | 批内递增序号（1 基）：**该规则命中的文件集合内**按扫描顺序从 1 编号，每个规则独立重新起算 | `订单{n}` → `订单1`、`订单2`… |
 | `{1}` `{2}`… | 该规则第一个正则条件的捕获组 1、2… | 正则 `(\d{4})-(\d{2})` → `{1}_{2}` |
@@ -88,7 +88,7 @@ RegexCondition : FileCondition
 
 **激活码**
 
-- 离线 RSA 签名；**私钥内置 LicenseTool（开发者专用，随工具源码存于仓库、不随商品发布），公钥内置进 FileTidy.App**
+- 离线 RSA 签名；**私钥内置 LicenseTool（开发者专用，随工具源码存于仓库、不随商品发布），公钥作为常量置于 FileTidy.Core（`LicenseKeys`），随应用二进制发布**
 - 激活码格式：`FTID-` + 内容（版本 + 随机串，全功能激活） + 签名，整体 Base32 编码（字母 A-Z、数字 2-7，无容易混淆字符，便于手输）
 - 不绑定设备；验证失败提示无效，不写盘
 - 激活码存储：`%AppData%\FileTidy\license.json`（`Code`、`ActivatedAt`）
