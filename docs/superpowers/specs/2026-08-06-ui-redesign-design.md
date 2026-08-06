@@ -29,7 +29,7 @@
 | 次文字 | `#6B7280` | 副标题、说明、占位 |
 | 强调色渐变 | `#6366F1 → #8B5CF6` | 主按钮、选中态、Switch 开启态 |
 | 成功 | `#10B981` | 预览"将移动"状态 |
-| 警告 | `#F59E0B` | 冲突状态、错误横幅底 |
+| 警告 | `#F59E0B` | 冲突状态、警示强调（横幅用其浅琥珀派生色 `BrBannerBg/Border/Text`） |
 | 错误 | `#EF4444` | 编辑错误红字、失败状态 |
 | Pro 徽标 | `#D97706`（琥珀金） | 全部 Pro 功能标识，全局统一 |
 
@@ -66,7 +66,7 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 └────────────────────────────────────────────────────────────┘
 ```
 
-- **页头左上**：应用名 + MDL2 字形小图标（如 `\uE8B7` 文件夹）+ 副标题行（授权状态小徽章绑定 `LicenseStateText` + 规则总数绑定 `EditorVms.Count`，均为既有属性）
+- **页头左上**：应用名 + MDL2 字形小图标（`\uE945` 闪电，整理语义）+ 副标题行（授权状态小徽章绑定 `LicenseStateText` + 规则总数绑定 `EditorVms.Count`，均为既有属性）
 - **页头右侧**：主操作「立即整理」蓝紫渐变按钮 + 次级「预览结果」「撤销上次」白底按钮 + **自动整理 Switch**
 - **Busy 禁用态**：`Busy` 为 true（预览/整理/撤销执行中）时，页头三个操作按钮禁用（绑定 `IsEnabled="{Binding Busy, Converter={StaticResource InverseBool}}"`，新增反向布尔转换器），防重复触发；`Busy` 属性为既有属性
 - **错误横幅**：琥珀色卡片（警示语义），错误 / 跳过明细共用，仅 `HasErrorDetails` 时显示
@@ -98,7 +98,7 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 
 - 扩展名与关键词合并为一行两列（短输入，节省纵向空间）
 - Pro 功能统一加琥珀金「Pro」小徽章：正则条件、移动并重命名、重命名模板
-- 分组卡片标题带小图标：条件=漏斗、动作=齿轮、选项=清单
+- 分组卡片标题带**序号编号强调**：01 文件条件 / 02 处理动作 / 03 选项，编号用强调色渲染（替代图标，避免依赖不确定的字形码点）
 - 绑定与实时保存逻辑（`UpdateSourceTrigger=PropertyChanged`）不变
 - 「重命名模板」行仅在动作选「移动并重命名」时显示，通过 XAML `ElementName` 触发器实现（不改 ViewModel）
 
@@ -107,7 +107,8 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 ```
 ┌─ 账户 / 激活（卡片）────────────────────────────────────┐
 │  ● Pro 已激活 / 免费版（试用剩余 X 天 / X 次）           │
-│  状态色：Pro=蓝紫渐变徽章，试用=琥珀，试用结束=灰        │
+│  状态色：Pro=蓝紫强调、试用=琥珀、试用结束=灰            │
+│  状态着色由新增 LicenseState 展示属性 + DataTrigger 实现 │
 │  [激活码输入框] [激活按钮] ← 按钮用渐变强调色            │
 │  提示文字（成功绿 / 失败红）                             │
 └──────────────────────────────────────────────────────────┘
@@ -129,7 +130,8 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 - **ViewModel 层新增（均为纯展示属性）**：
   - `PreviewRow.Status`（`PreviewStatus` 枚举），`RenderPreviews` 一并填充；现有 `Warned` 保留兼容
   - `ActivateResultIsError`（bool）：激活结果是否失败，供提示文字着色（`Activate` 返回值中的 ok 标志写入）
-  - `InverseBool` 转换器（App 层静态资源）：供 Busy 禁用态取反
+  - `LicenseState`（`LicenseState` 枚举只读属性，委托 `_license.GetState()`）：供设置页状态文字着色；`RefreshLicenseState` 内 `OnPropertyChanged` 通知
+- **App 层新增**：`InverseBool` 转换器（`InverseBoolConverter` 类，App 静态资源）：供 Busy 禁用态取反
 - 页头规则总数直接绑定 `EditorVms.Count`（既有集合，无需新属性）；「重命名模板」行显隐用 XAML `ElementName` 触发器（见第 4 节）
 - 行高亮触发器改用新枚举映射：绿=将移动 / 琥珀=冲突 / 金=需解锁Pro / 红=模板错误 / 灰=未命中
 - 图标用 Segoe MDL2 Assets、Switch 用 `ToggleButton` 自定义模板：**零新增 NuGet 依赖**
@@ -143,7 +145,7 @@ Button、ToggleButton（**Switch 开关**自定义模板，Win11 风格滑块）
 
 ### 7.1 自动化
 
-- 新增 1 个 smoke 测试：加载 `App.xaml` 资源字典不抛异常（防样式笔误导致启动白屏），放入 `tests/FileTidy.Tests`
+- 新增 **App 资源加载 smoke 测试**（防样式笔误导致启动白屏）：在 STA 线程创建 `App` 实例触发资源加载不抛异常，并断言关键资源键存在（同一测试类可含多个用例），放入 `tests/FileTidy.Tests`
 - 全部既有测试（`dotnet test tests/FileTidy.Tests`）必须保持通过
 
 ### 7.2 手动验收清单

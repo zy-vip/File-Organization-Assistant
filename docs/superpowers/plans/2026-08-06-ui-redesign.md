@@ -4,7 +4,7 @@
 
 **Goal:** 把 FileTidy 从"默认 WPF 裸控件"重塑为现代浅色（Win11 Fluent 语境）：统一设计系统、页头卡片化、分组卡片编辑器、预览状态色、金色 Pro 徽标。
 
-**Architecture:** 样式全部放在 `src/FileTidy.App/Themes/` 三个资源字典（`Colors.xaml` 颜色画刷 / `Controls.xaml` 控件皮肤 / `Switch.xaml` 开关模板），由 `App.xaml` MergedDictionaries 统一引入，`MainWindow.xaml` 只引用不重复定义。ViewModel 仅新增纯展示属性（`PreviewRow.Status`、`ActivateResultIsError`）与一个转换器（`InverseBoolConverter`），所有既有命令与绑定原样保留。
+**Architecture:** 样式全部放在 `src/FileTidy.App/Themes/` 三个资源字典（`Colors.xaml` 颜色画刷 / `Controls.xaml` 控件皮肤 / `Switch.xaml` 开关模板），由 `App.xaml` MergedDictionaries 统一引入，`MainWindow.xaml` 只引用不重复定义。ViewModel 仅新增纯展示属性（`PreviewRow.Status`、`ActivateResultIsError`、`LicenseState`）与一个转换器（`InverseBoolConverter`，App 层），所有既有命令与绑定原样保留。
 
 **Tech Stack:** C# / .NET 8 / WPF（net8.0-windows App 项目）+ xUnit（测试项目已引用 Core 与 App）。零新增 NuGet 依赖。
 
@@ -84,8 +84,8 @@ public class AppResourcesLoadTests
     public void MergedDictionaries_LoadWithoutException()
         => RunSta(() =>
         {
-            var app = new App(); // Controls/Switch 为占位空字典，验证整体合并不抛 XamlParseException
-            Assert.Single(app.Resources.MergedDictionaries)将字典=3的情形不在此断言;
+            var app = new App(); // 根字典合并三个子字典（Colors/Controls/Switch），验证整体合并不抛 XamlParseException
+            Assert.Equal(3, app.Resources.MergedDictionaries.Count);
         });
 }
 ```
@@ -700,17 +700,18 @@ public sealed class InverseBoolConverter : IValueConverter
 
 ---
 
-### Task 6: ViewModel 展示属性（PreviewRow.Status、ActivateResultIsError）
+### Task 6: ViewModel 展示属性（PreviewRow.Status、ActivateResultIsError、LicenseState）
 
 **Files:**
 - Modify: `src/FileTidy.App/ViewModels/MainViewModel.cs`
 - Test: `tests/FileTidy.Tests/MainViewModelTests.cs`（追加用例）
 
 **Interfaces:**
-- Consumes: `LicenseCodec.CreateKeyPair()`、`LicenseService(pub, licenseFile, trialFile)`、`PreviewStatus`（均有既有用法）
+- Consumes: `LicenseCodec.CreateKeyPair()`、`LicenseService(pub, licenseFile, trialFile)`、`PreviewStatus`、`LicenseState` 枚举（均在 Core，既有用法）
 - Produces:
   - `PreviewRow` 新增 `public required PreviewStatus Status { get; init; }`
   - `MainViewModel.ActivateResultIsError: bool`（public get / private set，绑定色）
+  - `MainViewModel.LicenseState: LicenseState`（只读，委托 `_license.GetState()`）：设置页状态文字着色；`RefreshLicenseState()` 内 `OnPropertyChanged(nameof(LicenseState))`
   - `ActivateResult`（既有）配合错误标志：成功→false、失败→true
 
 - [ ] **Step 1: 追加测试（MainViewModelTests 尾部）**
@@ -775,9 +776,29 @@ public async Task Preview_PopulatesStatusEnum()
     }
     finally { Directory.Delete(dir, true); }
 }
+
+[Fact]
+public void LicenseState_StartsTrial_BecomesProAfterActivate()
+{
+    var dir = Directory.CreateTempSubdirectory("vmLic").FullName;
+    try
+    {
+        var (priv, pub) = LicenseCodec.CreateKeyPair();
+        var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
+            license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
+        Assert.Equal(LicenseState.Trial, vm.LicenseState); // 无试用文件 = 新试用期
+
+        using var rsa = System.Security.Cryptography.RSA.Create();
+        rsa.ImportFromPem(priv);
+        vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
+        vm.ActivateCommand.Execute(null);
+        Assert.Equal(LicenseState.Pro, vm.LicenseState);
+    }
+    finally { Directory.Delete(dir, true); }
+}
 ```
 
-- [ ] **Step 2: 运行失败**（`Status` / `ActivateResultIsError` 未定义 → 编译错误）
+- [ ] **Step 2: 运行失败**（`Status` / `ActivateResultIsError` / `LicenseState` 未定义 → 编译错误）
 
 - [ ] **Step 3: 修改 `MainViewModel.cs`**
 
@@ -803,6 +824,25 @@ c) 新增属性（放在 `ActivateResult` 属性定义之后，约第 208 行）
 /// <summary>激活结果是否为失败（供显示层着色：成功绿 / 失败红）</summary>
 public bool ActivateResultIsError { get => _actErr; private set => SetProperty(ref _actErr, value); }
 private bool _actErr;
+
+/// <summary>许可证状态（供设置页状态文字着色；RefreshLicenseState 时通知）</summary>
+public LicenseState LicenseState => _license.GetState();
+```
+
+c2) `RefreshLicenseState`（第 163-173 行）末尾追加通知（构造后与激活后均触发）：
+```csharp
+public void RefreshLicenseState()
+{
+    LicenseStateText = _license.GetState() switch
+    {
+        LicenseState.Pro => "Pro 已激活",
+        LicenseState.Trial => _license.GetTrialInfo() is { } t
+            ? $"免费版（试用剩余 {t.RemainingDays} 天 / {t.RemainingTidy} 次）"
+            : "免费版",
+        _ => "免费版（试用已结束，购买 Pro 解锁全部功能）"
+    };
+    OnPropertyChanged(nameof(LicenseState));
+}
 ```
 
 d) `RenderPreviews`（第 288-304 行）`PreviewRow` 初始化追加 `Status`：
@@ -1019,7 +1059,11 @@ git commit -m "feat: 页头卡片化、Busy 禁用态与左栏规则列表卡片
             <!-- 卡 1：文件条件 -->
             <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
                 <StackPanel>
-                    <TextBlock Text="文件条件" Style="{StaticResource CardTitleText}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="01" Foreground="{StaticResource BrushAccent}" FontWeight="Bold" FontSize="13"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="文件条件" Style="{StaticResource CardTitleText}" Margin="0" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -1091,7 +1135,11 @@ git commit -m "feat: 页头卡片化、Busy 禁用态与左栏规则列表卡片
             <!-- 卡 2：处理动作 -->
             <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
                 <StackPanel>
-                    <TextBlock Text="处理动作" Style="{StaticResource CardTitleText}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="02" Foreground="{StaticResource BrushAccent}" FontWeight="Bold" FontSize="13"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="处理动作" Style="{StaticResource CardTitleText}" Margin="0" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -1132,7 +1180,11 @@ git commit -m "feat: 页头卡片化、Busy 禁用态与左栏规则列表卡片
             <!-- 卡 3：选项 -->
             <Border Style="{StaticResource CardBorder}">
                 <StackPanel>
-                    <TextBlock Text="选项" Style="{StaticResource CardTitleText}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="03" Foreground="{StaticResource BrushAccent}" FontWeight="Bold" FontSize="13"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="选项" Style="{StaticResource CardTitleText}" Margin="0" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <CheckBox Content="包含子文件夹" Style="{StaticResource FormCheckBox}"
                               IsChecked="{Binding SelectedEditor.IncludeSubfolders}"/>
                     <CheckBox Content="排除目标文件夹树" Style="{StaticResource FormCheckBox}"
@@ -1177,8 +1229,8 @@ git commit -m "feat: 规则编辑器分组卡片（文件条件/处理动作/选
 - Modify: `src/FileTidy.App/MainWindow.xaml`（DataGrid 行样式 + TabItem「设置」）
 
 **Interfaces:**
-- Consumes: `BrRow*`、`PreviewStatus`（Task 6 的 `PreviewRow.Status`）、`CardBorder`、激活颜色逻辑（`ActivateResultIsError`）
-- Produces: 行状态高亮、设置页分组卡片、激活成功/失败着色
+- Consumes: `BrRow*`、`PreviewStatus`（Task 6 的 `PreviewRow.Status`）、`CardBorder`、激活颜色逻辑（`ActivateResultIsError`）、`LicenseState`（Task 6 展示属性）、`BrWarning`/`BrTextDisabled`/`BrushAccent`
+- Produces: 行状态高亮（含 Moved 绿）、设置页分组卡片、激活成功/失败着色、授权状态三态着色
 
 - [ ] **Step 1: DataGrid 状态色 RowStyle**
 
@@ -1188,6 +1240,9 @@ git commit -m "feat: 规则编辑器分组卡片（文件条件/处理动作/选
 <DataGrid.RowStyle>
     <Style TargetType="DataGridRow">
         <Style.Triggers>
+            <DataTrigger Binding="{Binding Status}" Value="Moved">
+                <Setter Property="Background" Value="{StaticResource BrRowMoved}"/>
+            </DataTrigger>
             <DataTrigger Binding="{Binding Status}" Value="Conflict">
                 <Setter Property="Background" Value="{StaticResource BrRowConflict}"/>
             </DataTrigger>
@@ -1215,8 +1270,25 @@ git commit -m "feat: 规则编辑器分组卡片（文件条件/处理动作/选
             <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
                 <StackPanel>
                     <TextBlock Text="账户 / 激活" Style="{StaticResource CardTitleText}"/>
-                    <TextBlock Text="{Binding LicenseStateText}" FontWeight="SemiBold" Foreground="{StaticResource BrText}"
-                               Margin="0,0,0,8"/>
+                    <!-- 授权状态：Pro=强调色 / 试用=琥珀 / 试用结束=灰（Task 6 的 LicenseState 属性） -->
+                    <TextBlock Text="{Binding LicenseStateText}" FontWeight="SemiBold" Margin="0,0,0,8">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource BrText}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding LicenseState}" Value="Pro">
+                                        <Setter Property="Foreground" Value="{StaticResource BrushAccent}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding LicenseState}" Value="Trial">
+                                        <Setter Property="Foreground" Value="{StaticResource BrWarning}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding LicenseState}" Value="Free">
+                                        <Setter Property="Foreground" Value="{StaticResource BrTextDisabled}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Content="激活" Command="{Binding ActivateCommand}"
                                 Style="{StaticResource AccentButton}" Margin="8,0,0,0" Padding="18,7"/>
@@ -1259,7 +1331,8 @@ git commit -m "feat: 规则编辑器分组卡片（文件条件/处理动作/选
 > 注意点：
 > - 「自动整理」开关只在页头（Task 7），设置页不重复——本任务去掉原设置 Tab 里的 `CheckBox`「自动整理」，避免双入口。
 > - 激活结果 `TextBlock` 用 `DataTrigger` 绑定 `ActivateResultIsError` 着红/绿。
-> - 移动端不需要的 `ProBadge`（激活卡）不误——Pro 状态已有文字展示，不必加徽标。
+> - 授权状态三态着色（Pro 强调色 / 试用琥珀 / 试用结束灰）绑定 Task 6 新增的 `LicenseState` 展示属性。
+> - 激活卡不额外加 ProBadge——Pro 状态已有文字展示与着色，不必重复徽标。
 
 - [ ] **Step 3: `dotnet build` + smoke → PASS**
 - [ ] **Step 4: Commit**
@@ -1281,8 +1354,8 @@ git commit -m "feat: 预览结果状态色与设置页分组卡片"
   1. 预览 / 立即整理 / 撤销 / 自动整理 / 规则增删移均可点且行为正确
   2. 规则拖拽排序与上移 / 下移正常
   3. 正则与模板的 Pro 徽标正确显示
-  4. 激活流程走通（输入 → 激活），成功绿 / 失败红着色正确
-  5. 预览状态色覆盖（将移动 / 冲突 / 需解锁 Pro 金 / 模板错误 / 未命中）
+  4. 激活流程走通（输入 → 激活），成功绿 / 失败红着色正确，授权状态文字三态着色（Pro 蓝紫 / 试用琥珀 / 结束灰）随激活即时变化
+  5. 预览状态色覆盖（将移动绿 / 冲突琥珀 / 需解锁 Pro 金 / 模板错误红 / 未命中灰）
   6. 窗口缩放至 MinWidth 720 不破版
   7. 托盘（双击 / 立即整理 / 退出 / 完成通知）不受影响
   8. Busy（执行中）时页头操作按钮置灰不可点
@@ -1309,16 +1382,17 @@ git commit -m "chore: 界面重塑验证与收尾"
 | §3 Busy 禁用态 | Task 5（转换器）+ Task 7（绑定） |
 | §3 错误横幅琥珀卡 | Task 7 |
 | §3 规则列表卡片 | Task 7 |
-| §4 编辑器分组卡片 / ElementName 触发 / Pro 徽标 | Task 8（+ Task 2 徽章） |
-| §5 设置页分组 / 去重自动整理 / 激活着色 | Task 9 |
-| §6 PreviewRow.Status / ActivateResultIsError / InverseBool | Task 5、Task 6 |
+| §4 编辑器分组卡片 / ElementName 触发 / Pro 徽标 / 卡片标题序号编号 | Task 8（+ Task 2 徽章） |
+| §5 设置页分组 / 去重自动整理 / 激活着色 / 授权状态三态着色 | Task 9 |
+| §6 PreviewRow.Status / ActivateResultIsError / LicenseState / InverseBool | Task 5、Task 6 |
 | §7 smoke 自动化 / 手动验收 | Task 1、Task 10 |
 
 ### 类型与命名一致性
 
 - `BrushAccentHover` / `BrushAccentPressed`：Task 1 定义，Task 2 的 `AccentButton` 使用，全链路一致；
-- `PreviewRow.Status: PreviewStatus`：Task 6 定义生产，Task 9 `DataTrigger Value="Conflict"/"NeedsPro"...` 使用（WPF 枚举字符串匹配）；
+- `PreviewRow.Status: PreviewStatus`：Task 6 定义生产，Task 9 `DataTrigger Value="Moved"/"Conflict"/"NeedsPro"/"TemplateError"/"NoMatch"` 使用（WPF 枚举字符串匹配）；
 - `ActivateResultIsError`：Task 6 定义生产，Task 9 使用；
+- `LicenseState`：Task 6 定义生产（只读属性 + 通知），Task 9 三态着色使用；
 - `InverseBoolConverter` / `InverseBool`：Task 5 定义、Task 7 注册为 App 资源并绑定使用；
 - 样式 key（`CardBorder`/`FormTextBox`/`ProBadge`/`SwitchStyle` 等）Task 2/7/8/9 统一引用。
 
