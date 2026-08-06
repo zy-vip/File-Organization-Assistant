@@ -34,7 +34,13 @@
                     <Button Content="＋ 新建规则" Command="{Binding AddRuleCommand}" Margin="0,0,4,0" />
                     <Button Content="删除规则" Command="{Binding DeleteRuleCommand}" />
                 </StackPanel>
-                <ListBox ItemsSource="{Binding EditorVms}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedEditor}" />
+                <ListBox ItemsSource="{Binding EditorVms}" SelectedItem="{Binding SelectedEditor}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </DockPanel>
             <Grid Grid.Column="1" Margin="8,0,0,0">
                 <Grid.RowDefinitions>

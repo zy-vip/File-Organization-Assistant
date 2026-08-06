@@ -9,7 +9,10 @@ public class RuleEditorViewModel : ObservableObject
 {
     /// <summary>对应的领域模型（对象初始化器赋值，故 set 公开）</summary>
     public Rule Model { get; set; } = new();
-    public string Name { get => _name; set => SetProperty(ref _name, value); }
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) OnPropertyChanged(nameof(DisplayName)); } }
+
+    /// <summary>左侧列表显示用：未命名规则显示占位符，避免空行</summary>
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "（新规则）" : Name.Trim();
     public string SourcePath { get => _source; set => SetProperty(ref _source, value); }
     public string TargetPath { get => _target; set => SetProperty(ref _target, value); }
     public bool IncludeSubfolders { get => _subs; set => SetProperty(ref _subs, value); }
