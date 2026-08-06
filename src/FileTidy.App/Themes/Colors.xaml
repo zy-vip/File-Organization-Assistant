@@ -37,4 +37,12 @@
     <SolidColorBrush x:Key="BrBannerBg" Color="#FFFBEB"/>
     <SolidColorBrush x:Key="BrBannerBorder" Color="#FDE68A"/>
     <SolidColorBrush x:Key="BrBannerText" Color="#92400E"/>
+
+    <!-- 选中高亮（强调色浅/深） -->
+    <SolidColorBrush x:Key="BrAccentSoft" Color="#EDEBFE"/>
+    <SolidColorBrush x:Key="BrAccentDeep" Color="#4338CA"/>
+
+    <!-- 表格辅助色：交替行 / 表头底色 -->
+    <SolidColorBrush x:Key="BrRowAlt" Color="#FBFCFD"/>
+    <SolidColorBrush x:Key="BrHeaderBg" Color="#F4F5F7"/>
 </ResourceDictionary>

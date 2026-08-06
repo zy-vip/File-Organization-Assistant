@@ -101,4 +101,8 @@ public class AppResourcesLoadTests
     [Fact]
     public void Switch_Key_Exists()
         => RunSta(app => Assert.NotNull(app.Resources["SwitchStyle"]));
+
+    [Fact]
+    public void ListControls_MergedLoad_WithoutException()
+        => RunSta(app => Assert.NotNull(app.Resources));
 }
