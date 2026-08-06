@@ -97,9 +97,30 @@
                     <TextBlock Text="{Binding SelectedEditor.ErrorSummary, FallbackValue=请在左侧选择或新建规则}"
                                Foreground="{StaticResource BrError}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                 </StackPanel>
-                <!-- 预览表：Task 9 补状态色 RowStyle -->
+                <!-- 预览表：行状态色（Moved 绿 / Conflict 琥珀 / NeedsPro 金 / TemplateError 红 / NoMatch 灰） -->
                 <DataGrid Grid.Row="1" MaxHeight="220" Margin="0,8,0,8" AutoGenerateColumns="False"
                           ItemsSource="{Binding PreviewRows}" IsReadOnly="True">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Status}" Value="Moved">
+                                    <Setter Property="Background" Value="{StaticResource BrRowMoved}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Conflict">
+                                    <Setter Property="Background" Value="{StaticResource BrRowConflict}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="NeedsPro">
+                                    <Setter Property="Background" Value="{StaticResource BrRowNeedsPro}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="TemplateError">
+                                    <Setter Property="Background" Value="{StaticResource BrRowTemplateError}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="NoMatch">
+                                    <Setter Property="Background" Value="{StaticResource BrRowNoMatch}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="源文件" Binding="{Binding Source}" Width="*"/>
                         <DataGridTextColumn Header="目标路径" Binding="{Binding Dest}" Width="*"/>
@@ -252,22 +273,67 @@
                         </ScrollViewer>
                     </TabItem>
                     <TabItem Header="设置">
-                        <StackPanel Margin="8">
-                            <GroupBox Header="账户 / 激活" Margin="0,0,0,8">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding LicenseStateText}" FontWeight="Bold" Margin="0,0,0,4"/>
-                                    <DockPanel>
-                                        <Button DockPanel.Dock="Right" Content="激活" Command="{Binding ActivateCommand}" Margin="4,0,0,0"/>
-                                        <TextBox Text="{Binding ActivationCode, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </DockPanel>
-                                    <TextBlock Text="{Binding ActivateResult}" Foreground="#842029" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </GroupBox>
-                            <CheckBox Content="开机自启" IsChecked="{Binding StartWithWindows}" />
-                            <CheckBox Content="新规则默认冲突时自动追加序号" IsChecked="{Binding AutoRenameOnConflict}" />
-                            <TextBlock Margin="0,16,0,0" Text="Pro 功能：正则条件、重命名模板、重复文件检测"
-                                       Foreground="Gray" FontSize="11" />
-                        </StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{StaticResource BrWindow}">
+                            <StackPanel Margin="4">
+                                <!-- 账户 / 激活 -->
+                                <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="账户 / 激活" Style="{StaticResource CardTitleText}"/>
+                                        <!-- 授权状态：Pro=强调色 / 试用=琥珀 / 试用结束=灰（Task 6 的 LicenseState 属性） -->
+                                        <TextBlock Text="{Binding LicenseStateText}" FontWeight="SemiBold" Margin="0,0,0,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource BrText}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LicenseState}" Value="Pro">
+                                                            <Setter Property="Foreground" Value="{StaticResource BrushAccent}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LicenseState}" Value="Trial">
+                                                            <Setter Property="Foreground" Value="{StaticResource BrWarning}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LicenseState}" Value="Free">
+                                                            <Setter Property="Foreground" Value="{StaticResource BrTextDisabled}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Content="激活" Command="{Binding ActivateCommand}"
+                                                    Style="{StaticResource AccentButton}" Margin="8,0,0,0" Padding="18,7"/>
+                                            <TextBox Style="{StaticResource FormTextBox}"
+                                                     Text="{Binding ActivationCode, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </DockPanel>
+                                        <!-- 激活结果：成功绿 / 失败红 -->
+                                        <TextBlock Text="{Binding ActivateResult}" TextWrapping="Wrap" Margin="0,8,0,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource BrSuccess}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ActivateResultIsError}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource BrError}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 常规 -->
+                                <Border Style="{StaticResource CardBorder}">
+                                    <StackPanel>
+                                        <TextBlock Text="常规" Style="{StaticResource CardTitleText}"/>
+                                        <ToggleButton Content="开机自启" Style="{StaticResource SwitchStyle}"
+                                                      IsChecked="{Binding StartWithWindows}" Margin="0,0,0,8"/>
+                                        <CheckBox Content="新规则默认冲突时自动追加序号" Style="{StaticResource FormCheckBox}"
+                                                  IsChecked="{Binding AutoRenameOnConflict}"/>
+                                        <TextBlock Text="Pro 功能：正则条件、重命名模板、重复文件检测"
+                                                   Foreground="{StaticResource BrTextSecondary}" FontSize="11" Margin="0,12,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
                 </TabControl>
             </Grid>
