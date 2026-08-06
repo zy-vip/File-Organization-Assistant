@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
+using FileTidy.Core;
 using FileTidy.Core.Models;
 
 namespace FileTidy.App.ViewModels;
@@ -32,6 +33,22 @@ public class RuleEditorViewModel : ObservableObject
     /// <summary>期限（天）文本，空/非法按 0 处理；0 表示不启用日期条件</summary>
     public string AgeDays { get => _age; set => SetProperty(ref _age, value); }
     private string _age = "0";
+
+    /// <summary>正则条件文本（Pro）；非空即启用正则条件</summary>
+    public string RegexPattern { get => _regex; set => SetProperty(ref _regex, value); }
+    private string _regex = "";
+
+    /// <summary>正则是否区分大小写（默认忽略大小写）</summary>
+    public bool RegexCaseSensitive { get => _case; set => SetProperty(ref _case, value); }
+    private bool _case = false;
+
+    /// <summary>动作类型：move（仅移动） / moveRename（移动并重命名，Pro）</summary>
+    public string ActionType { get => _action; set => SetProperty(ref _action, value); }
+    private string _action = "move";
+
+    /// <summary>重命名模板（Pro，选中 moveRename 时生效）</summary>
+    public string RenameTemplate { get => _template; set => SetProperty(ref _template, value); }
+    private string _template = "";
 
     /// <summary>解析后的有效期天数，非法或非正数返回 0（禁用）</summary>
     private int AgeDaysParsed => int.TryParse(AgeDays, out var days) && days > 0 ? days : 0;
@@ -72,6 +89,13 @@ public class RuleEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(SourcePath) || !Directory.Exists(SourcePath)) errors.Add("源文件夹不存在");
         if (string.IsNullOrWhiteSpace(TargetPath)) errors.Add("目标文件夹不能为空");
         if (ConditionsCount() == 0) errors.Add("至少需要一个条件");
+        if (!string.IsNullOrWhiteSpace(RegexPattern) && !RegexCondition.IsValidPattern(RegexPattern))
+            errors.Add("正则表达式不合法");
+        if (ActionType == "moveRename")
+        {
+            var tErrors = TemplateRenderer.Validate(RenameTemplate);
+            errors.AddRange(tErrors.Select(e => "模板：" + e));
+        }
         CheckTreeRelation(errors);
         return errors;
     }
@@ -106,7 +130,8 @@ public class RuleEditorViewModel : ObservableObject
     private int ConditionsCount()
         => (Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
          + (Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 0 ? 1 : 0)
-         + (AgeDaysParsed > 0 ? 1 : 0);
+         + (AgeDaysParsed > 0 ? 1 : 0)
+         + (RegexPattern.Length > 0 ? 1 : 0);
 
     /// <summary>将编辑器状态写回 Rule 模型</summary>
     public void ApplyToModel()
@@ -115,6 +140,8 @@ public class RuleEditorViewModel : ObservableObject
         Model.IncludeSubfolders = IncludeSubfolders; Model.ExcludeTargetTree = ExcludeTargetTree;
         Model.AutoRenameOnConflict = AutoRenameOnConflict;
         Model.Conditions.Clear();
+        if (RegexPattern.Length > 0)
+            Model.Conditions.Add(new RegexCondition { Pattern = RegexPattern, IgnoreCase = !RegexCaseSensitive });
         var exts = Extensions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (exts.Length > 0) Model.Conditions.Add(new ExtensionCondition { Extensions = exts.ToList() });
         // 每个关键词独立成条件（任一命中即触发），避免逗号分隔输入被静默丢弃
@@ -122,5 +149,9 @@ public class RuleEditorViewModel : ObservableObject
         foreach (var kw in kws)
             Model.Conditions.Add(new KeywordCondition { Keyword = kw });
         if (AgeDaysParsed > 0) Model.Conditions.Add(new AgeCondition { Days = AgeDaysParsed });
+        Model.Actions.Clear();
+        Model.Actions.Add(ActionType == "moveRename" && TemplateRenderer.Validate(RenameTemplate).Count == 0
+            ? new MoveAndRenameAction { Template = RenameTemplate }
+            : new MoveAction());
     }
 }

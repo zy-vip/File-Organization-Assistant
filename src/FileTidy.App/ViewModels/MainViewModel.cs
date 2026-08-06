@@ -112,7 +112,11 @@ public class MainViewModel : ObservableObject
         AutoRenameOnConflict = rule.AutoRenameOnConflict,
         Extensions = string.Join(", ", rule.Conditions.OfType<ExtensionCondition>().SelectMany(c => c.Extensions)),
         Keywords = string.Join(", ", rule.Conditions.OfType<KeywordCondition>().Select(c => c.Keyword)),
-        AgeDays = rule.Conditions.OfType<AgeCondition>().Select(c => c.Days).FirstOrDefault().ToString()
+        AgeDays = rule.Conditions.OfType<AgeCondition>().Select(c => c.Days).FirstOrDefault().ToString(),
+        RegexPattern = rule.Conditions.OfType<RegexCondition>().Select(c => c.Pattern).FirstOrDefault() ?? "",
+        RegexCaseSensitive = rule.Conditions.OfType<RegexCondition>().Select(c => !c.IgnoreCase).FirstOrDefault(),
+        ActionType = rule.Actions.OfType<MoveAndRenameAction>().Any() ? "moveRename" : "move",
+        RenameTemplate = rule.Actions.OfType<MoveAndRenameAction>().Select(a => a.Template).FirstOrDefault() ?? ""
     };
 
     /// <summary>新增规则并自动选中（新规则继承全局冲突序号开关）</summary>
