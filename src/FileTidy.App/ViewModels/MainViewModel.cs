@@ -20,6 +20,7 @@ public class MainViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly Func<DateTime> _now;
     private readonly string _operationsDir;
+    private readonly LicenseService _license;
     private readonly EngageQueue _queue = new();
     private readonly FolderWatcher _watcher = new();
 
@@ -57,11 +58,12 @@ public class MainViewModel : ObservableObject
     }
     private RuleEditorViewModel? _selected;
 
-    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null, string? operationsDir = null)
+    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null, string? operationsDir = null, LicenseService? license = null)
     {
         _settings = settings;
         _now = coreTimeProvider ?? (() => DateTime.Now);
         _operationsDir = operationsDir ?? AppPaths.OperationsDir;
+        _license = license ?? new LicenseService(LicenseKeys.AppPublicKeyPem, AppPaths.LicenseFile, AppPaths.TrialFile);
         PreviewCommand = new RelayCommand(PreviewAsync);
         TidyCommand = new RelayCommand(TidyAsync);
         UndoCommand = new RelayCommand(UndoAsync);
@@ -175,13 +177,21 @@ public class MainViewModel : ObservableObject
     /// <summary>是否有明细需要展示（供 XAML 可见性绑定）</summary>
     public bool HasErrorDetails => ErrorDetails is not null;
 
-    private void SetErrorDetails(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
+        private void SetErrorDetails(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
     {
         var lines = new List<string>();
         lines.AddRange(failed.Select(f => $"失败：{f.Source} → {f.Dest}：{f.Reason}"));
         lines.AddRange(skipped.Select(s => $"跳过：{s.Source}：{s.Reason}"));
         ErrorDetails = lines.Count > 0 ? string.Join("\n", lines) : null;
         OnPropertyChanged(nameof(HasErrorDetails));
+    }
+
+    /// <summary>设置执行明细；若跳过原因含 Pro 拦截则追加一行购买提示</summary>
+    private void SetErrorDetailsWithProHint(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
+    {
+        SetErrorDetails(failed, skipped);
+        if (skipped.Any(s => s.Reason.Contains("Pro")))
+            ErrorDetails = $"{ErrorDetails}\n部分规则需要 Pro 解锁，购买后可启用";
     }
 
     private async Task PreviewAsync()
@@ -217,7 +227,7 @@ public class MainViewModel : ObservableObject
         var now = _now();
         foreach (var vm in EditorVms) vm.ApplyToModel();
         var files = ScanAllSources();
-        var previews = PreviewService.Build(Rules.ToList(), files, now);
+        var previews = PreviewService.Build(Rules.ToList(), files, now, _license.IsAllowed);
         if (render) RenderPreviews(previews);
         return previews;
     }
@@ -234,6 +244,8 @@ public class MainViewModel : ObservableObject
                 Dest = p.DestPath,
                 StatusText = p.Status == PreviewStatus.Moved ? "将移动"
                            : p.Status == PreviewStatus.Conflict ? "冲突"
+                           : p.Status == PreviewStatus.TemplateError ? "模板错误"
+                           : p.Status == PreviewStatus.NeedsPro ? "需解锁 Pro"
                            : "未命中",
                 Warned = p.Status != PreviewStatus.Moved
             });
@@ -261,13 +273,23 @@ public class MainViewModel : ObservableObject
             await _queue.RunAsync(async () =>
             {
                 await Task.Yield();
+                _license.RecordTidyUse();
                 var previews = BuildPreview();
                 // 只执行真正要移动的条目：无命中/冲突未启用序号时不应落盘空日志
                 var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                if (movable.Count == 0) { StatusText = "没有需要整理的文件"; return false; }
+                if (movable.Count == 0)
+                {
+                    // 修正 C：无文件可移动但存在 Pro 拦截时给出跳过明细（含 Pro 提示），否则提示无文件
+                    var blocked = previews.Where(p => p.Status == PreviewStatus.NeedsPro)
+                        .Select(p => new OrganizeItem { Source = p.File.FullPath, Reason = $"需要 Pro 解锁（{p.BlockedFeature}）" })
+                        .ToList();
+                    if (blocked.Count > 0) SetErrorDetails(Array.Empty<OrganizeItem>(), blocked);
+                    StatusText = "没有需要整理的文件";
+                    return false;
+                }
                 var (result, record) = Organizer.Execute(movable, _now());
                 new OperationLog(_operationsDir, _retention).Save(record);
-                SetErrorDetails(result.Failed, result.Skipped);
+                SetErrorDetailsWithProHint(result.Failed, result.Skipped);
                 StatusText = $"整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}";
                 return true;
             });
@@ -324,9 +346,10 @@ public class MainViewModel : ObservableObject
         await Task.Delay(3000);
         try
         {
-            await _queue.RunAsync(async () =>
+await _queue.RunAsync(async () =>
             {
 await Task.Yield();
+                    _license.RecordTidyUse();
                     var previews = BuildPreview(render: false);
                     var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
                 if (movable.Count == 0) return false;

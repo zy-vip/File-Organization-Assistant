@@ -2,6 +2,7 @@
 using System.IO;
 using FileTidy.App;
 using FileTidy.App.ViewModels;
+using FileTidy.Core;
 using FileTidy.Core.Models;
 
 namespace FileTidy.Tests;
@@ -10,6 +11,13 @@ public class MainViewModelTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("vm").FullName;
     public void Dispose() => Directory.Delete(_dir, true);
+
+    // 临时许可证：每个用例独立密钥对与文件，避免污染真实试用/激活文件
+    private static LicenseService TempLicense(string dir)
+    {
+        var (_, pub) = LicenseCodec.CreateKeyPair();
+        return new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
+    }
 
     [Fact]
     public void RuleEditor_Validation_ReportsErrors()
@@ -91,7 +99,10 @@ public class MainViewModelTests : IDisposable
     }
 
     private MainViewModel NewVm(string operationsDir)
-        => new(new SettingsService(Path.Combine(_dir, "config.json")), coreTimeProvider: () => DateTime.Now, operationsDir: operationsDir);
+        => new(new SettingsService(Path.Combine(_dir, "config.json")),
+               coreTimeProvider: () => DateTime.Now,
+               operationsDir: operationsDir,
+               license: TempLicense(_dir));
 
     [Fact]
     public async Task TidyCommand_WithOneRule_MovesFile()
@@ -151,7 +162,8 @@ public class MainViewModelTests : IDisposable
         new SettingsService(Path.Combine(_dir, "config.json")).Save(config);
 
         var vm = new MainViewModel(new SettingsService(Path.Combine(_dir, "config.json")),
-            coreTimeProvider: () => DateTime.Now, operationsDir: opsDir);
+            coreTimeProvider: () => DateTime.Now, operationsDir: opsDir,
+            license: TempLicense(_dir));
 
         Assert.Single(vm.EditorVms);
         Assert.Equal("旧规则", vm.EditorVms[0].Name);
@@ -181,5 +193,64 @@ public class MainViewModelTests : IDisposable
         Assert.Contains("成功", msg);
         Assert.True(File.Exists(Path.Combine(targetDir, "新文件.pdf")));
         Assert.Single(Directory.GetFiles(opsDir, "*.json")); // 自动整理同样写入日志
+    }
+
+    [Fact]
+    public async Task Tidy_RecordsTrialUseAndBlocksProWhenExhausted()
+    {
+        var dir = Directory.CreateTempSubdirectory("vm2").FullName;
+        try
+        {
+            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
+            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
+
+            var (_, pub) = LicenseCodec.CreateKeyPair();
+            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"), trialTidyLimit: 2);
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
+            vm.Rules.Add(new Rule
+            {
+                Name = "正则", SourcePath = srcDir, TargetPath = targetDir,
+                Conditions = { new RegexCondition { Pattern = @"jpg" } }
+            });
+
+            await vm.TidyCommand.ExecuteAsync();
+            Assert.True(File.Exists(Path.Combine(targetDir, "a.jpg")));
+            Assert.Equal(1, license.GetTrialInfo()!.RemainingTidy);;
+
+            File.WriteAllText(Path.Combine(srcDir, "b.jpg"), "x");
+            await vm.TidyCommand.ExecuteAsync();
+            Assert.False(File.Exists(Path.Combine(targetDir, "b.jpg")));
+            Assert.Contains("Pro", vm.ErrorDetails ?? "");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Tidy_RenameSequenceMatchesPreview()
+    {
+        var dir = Directory.CreateTempSubdirectory("vm5").FullName;
+        try
+        {
+            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
+            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
+            File.WriteAllText(Path.Combine(srcDir, "b.jpg"), "x");
+
+            var (_, pub) = LicenseCodec.CreateKeyPair();
+            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
+            vm.Rules.Add(new Rule
+            {
+                Name = "重命名", SourcePath = srcDir, TargetPath = targetDir,
+                Conditions = { new ExtensionCondition { Extensions = { "jpg" } } },
+                Actions = { new MoveAndRenameAction { Template = "图{n}{ext}" } }
+            });
+
+            await vm.TidyCommand.ExecuteAsync();
+            Assert.True(File.Exists(Path.Combine(targetDir, "图1.jpg")));
+            Assert.True(File.Exists(Path.Combine(targetDir, "图2.jpg")));
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }
