@@ -50,6 +50,9 @@ public class MainViewModel : ObservableObject
     public RelayCommand UndoCommand { get; }
     public RelayCommand AddRuleCommand { get; }
     public RelayCommand DeleteRuleCommand { get; }
+    public RelayCommand ActivateCommand { get; }
+    public RelayCommand MoveRuleUpCommand { get; }
+    public RelayCommand MoveRuleDownCommand { get; }
 
     public RuleEditorViewModel? SelectedEditor
     {
@@ -73,6 +76,15 @@ public class MainViewModel : ObservableObject
             if (SelectedEditor is not null) DeleteRule(SelectedEditor);
             return Task.CompletedTask;
         });
+        ActivateCommand = new RelayCommand(() =>
+        {
+            var (ok, message) = _license.Activate(ActivationCode);
+            ActivateResult = message;
+            RefreshLicenseState();
+            return Task.CompletedTask;
+        });
+        MoveRuleUpCommand = new RelayCommand(() => { if (SelectedEditor is not null) MoveRule(EditorVms.IndexOf(SelectedEditor), -1); return Task.CompletedTask; });
+        MoveRuleDownCommand = new RelayCommand(() => { if (SelectedEditor is not null) MoveRule(EditorVms.IndexOf(SelectedEditor), 1); return Task.CompletedTask; });
         // 事件订阅只做一次；开关状态由 AutoTidyAsync 内部检查，避免开启/关闭失效
         _watcher.TidyTriggered += () => _ = AutoTidyAsync();
         LoadConfig();
@@ -95,6 +107,7 @@ public class MainViewModel : ObservableObject
         StartWithWindows = config.StartWithWindows;
         AutoRenameOnConflict = config.AutoRenameOnConflict;
         if (AutoTidy) _watcher.Watch(Rules.Select(r => r.SourcePath).ToArray());
+        RefreshLicenseState();
     }
 
     /// <summary>订阅编辑器变更：规则编辑实时保存（配置实时落盘）</summary>
@@ -136,6 +149,29 @@ public class MainViewModel : ObservableObject
         Save();
     }
 
+    /// <summary>移动规则：delta 为 -1/+1；EditorVms 与 Rules 同步重排并保存</summary>
+    public void MoveRule(int index, int delta)
+    {
+        var newIndex = index + delta;
+        if (index < 0 || newIndex < 0 || newIndex >= EditorVms.Count) return;
+        EditorVms.Move(index, newIndex);
+        Rules.Move(index, newIndex);
+        Save();
+    }
+
+    /// <summary>刷新许可证状态文案（构造后与激活后调用）</summary>
+    public void RefreshLicenseState()
+    {
+        LicenseStateText = _license.GetState() switch
+        {
+            LicenseState.Pro => "Pro 已激活",
+            LicenseState.Trial => _license.GetTrialInfo() is { } t
+                ? $"免费版（试用剩余 {t.RemainingDays} 天 / {t.RemainingTidy} 次）"
+                : "免费版",
+            _ => "免费版（试用已结束，购买 Pro 解锁全部功能）"
+        };
+    }
+
     /// <summary>保存配置（规则编辑实时触发）；自动模式开启时同步刷新监听列表</summary>
     private void Save()
     {
@@ -158,6 +194,18 @@ public class MainViewModel : ObservableObject
         set { if (SetProperty(ref _globalRename, value)) Save(); }
     }
     private bool _globalRename = true;
+
+    /// <summary>许可证状态文案（设置页显示）</summary>
+    public string LicenseStateText { get => _licText; private set => SetProperty(ref _licText, value); }
+    private string _licText = "";
+
+    /// <summary>激活码输入框</summary>
+    public string ActivationCode { get => _code; set => SetProperty(ref _code, value); }
+    private string _code = "";
+
+    /// <summary>激活结果提示</summary>
+    public string? ActivateResult { get => _activateResult; private set => SetProperty(ref _activateResult, value); }
+    private string? _activateResult;
 
     /// <summary>开机自启开关：变更即写注册表并保存</summary>
     public bool StartWithWindows

@@ -253,4 +253,44 @@ public class MainViewModelTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public void MoveRule_ReordersAndPersists()
+    {
+        var dir = Directory.CreateTempSubdirectory("vm3").FullName;
+        try
+        {
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: TempLicense(dir));
+            vm.AddRule(); vm.SelectedEditor!.Name = "A";
+            vm.AddRule(); vm.SelectedEditor!.Name = "B";
+            vm.MoveRule(1, -1);
+            Assert.Equal("B", vm.EditorVms[0].Name);
+            Assert.Equal("A", vm.EditorVms[1].Name);
+            Assert.Equal("B", vm.Rules[0].Name);
+            var reloaded = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: TempLicense(dir));
+            Assert.Equal("B", reloaded.Rules[0].Name);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Activate_SetsProText()
+    {
+        var dir = Directory.CreateTempSubdirectory("vm4").FullName;
+        try
+        {
+            var (priv, pub) = LicenseCodec.CreateKeyPair();
+            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
+            Assert.Contains("试用", vm.LicenseStateText);
+
+            using var rsa = System.Security.Cryptography.RSA.Create();
+            rsa.ImportFromPem(priv);
+            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
+            vm.ActivateCommand.Execute(null);
+            Assert.Contains("Pro 已激活", vm.LicenseStateText);
+            Assert.Contains("成功", vm.ActivateResult ?? "");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

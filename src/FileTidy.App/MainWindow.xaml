@@ -31,16 +31,17 @@
             </Grid.ColumnDefinitions>
             <DockPanel Grid.Column="0">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
-                    <Button Content="＋ 新建规则" Command="{Binding AddRuleCommand}" Margin="0,0,4,0" />
-                    <Button Content="删除规则" Command="{Binding DeleteRuleCommand}" />
+                    <Button Content="＋ 新建规则" Command="{Binding AddRuleCommand}" Margin="0,0,4,0"/>
+                    <Button Content="↑" Command="{Binding MoveRuleUpCommand}" ToolTip="上移" Margin="0,0,4,0"/>
+                    <Button Content="↓" Command="{Binding MoveRuleDownCommand}" ToolTip="下移" Margin="0,0,4,0"/>
+                    <Button Content="删除规则" Command="{Binding DeleteRuleCommand}"/>
                 </StackPanel>
-                <ListBox ItemsSource="{Binding EditorVms}" SelectedItem="{Binding SelectedEditor}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding DisplayName}" />
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <ListBox ItemsSource="{Binding EditorVms}" DisplayMemberPath="DisplayName"
+                         SelectedItem="{Binding SelectedEditor}"
+                         PreviewMouseLeftButtonDown="RuleList_PreviewMouseLeftButtonDown"
+                         MouseMove="RuleList_MouseMove"
+                         Drop="RuleList_Drop"
+                         AllowDrop="True"/>
             </DockPanel>
             <Grid Grid.Column="1" Margin="8,0,0,0">
                 <Grid.RowDefinitions>
@@ -75,13 +76,25 @@
                         <StackPanel Margin="8">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                                 <TextBlock Grid.Row="0" Text="名称" /><TextBox Grid.Column="1" Text="{Binding SelectedEditor.Name, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="1" Text="源文件夹" /><TextBox Grid.Column="1" Grid.Row="1" Text="{Binding SelectedEditor.SourcePath, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="2" Text="目标文件夹" /><TextBox Grid.Column="1" Grid.Row="2" Text="{Binding SelectedEditor.TargetPath, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="3" Text="扩展名(逗号分隔)" /><TextBox Grid.Column="1" Grid.Row="3" Text="{Binding SelectedEditor.Extensions, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="4" Text="关键词(逗号分隔)" /><TextBox Grid.Column="1" Grid.Row="4" Text="{Binding SelectedEditor.Keywords, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="5" Text="N天前(0禁用)" /><TextBox Grid.Column="1" Grid.Row="5" Text="{Binding SelectedEditor.AgeDays, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="6" Text="正则表达式(Pro)"/>
+                                <TextBox Grid.Column="1" Grid.Row="6" Text="{Binding SelectedEditor.RegexPattern, UpdateSourceTrigger=PropertyChanged}"/>
+                                <CheckBox Grid.Column="1" Grid.Row="7" Content="区分大小写"
+                                          IsChecked="{Binding SelectedEditor.RegexCaseSensitive}" HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Row="8" Text="处理动作"/>
+                                <ComboBox Grid.Column="1" Grid.Row="8" SelectedValuePath="Tag"
+                                          SelectedValue="{Binding SelectedEditor.ActionType}">
+                                    <ComboBoxItem Content="仅移动" Tag="move"/>
+                                    <ComboBoxItem Content="移动并重命名 (Pro)" Tag="moveRename"/>
+                                </ComboBox>
+                                <TextBlock Grid.Row="9" Text="重命名模板(Pro)"/>
+                                <TextBox Grid.Column="1" Grid.Row="9" Text="{Binding SelectedEditor.RenameTemplate, UpdateSourceTrigger=PropertyChanged}"/>
                             </Grid>
                             <CheckBox Content="包含子文件夹" IsChecked="{Binding SelectedEditor.IncludeSubfolders}" />
                             <CheckBox Content="排除目标文件夹树" IsChecked="{Binding SelectedEditor.ExcludeTargetTree}" />
@@ -90,9 +103,19 @@
                     </TabItem>
                     <TabItem Header="设置">
                         <StackPanel Margin="8">
+                            <GroupBox Header="账户 / 激活" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding LicenseStateText}" FontWeight="Bold" Margin="0,0,0,4"/>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="激活" Command="{Binding ActivateCommand}" Margin="4,0,0,0"/>
+                                        <TextBox Text="{Binding ActivationCode, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding ActivateResult}" Foreground="#842029" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </GroupBox>
                             <CheckBox Content="开机自启" IsChecked="{Binding StartWithWindows}" />
                             <CheckBox Content="新规则默认冲突时自动追加序号" IsChecked="{Binding AutoRenameOnConflict}" />
-                            <TextBlock Margin="0,16,0,0" Text="Pro 功能（即将推出）：正则条件、重命名模板、重复文件检测"
+                            <TextBlock Margin="0,16,0,0" Text="Pro 功能：正则条件、重命名模板、重复文件检测"
                                        Foreground="Gray" FontSize="11" />
                         </StackPanel>
                     </TabItem>
