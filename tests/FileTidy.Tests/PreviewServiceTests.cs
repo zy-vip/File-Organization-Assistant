@@ -72,6 +72,29 @@ public class PreviewServiceTests : IDisposable
         Assert.Equal(Path.Combine(target, "a(1).jpg"), previews[0].DestPath);
     }
 
+    [Fact]
+    public void Build_ConflictStatus_WhenNoAutoRename()
+    {
+        // 未启用自动序号时目标已存在 → Conflict 状态，DestPath 保持原冲突路径
+        var target = Path.Combine(_dir, "target");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "a.jpg"), "existing");
+
+        var rules = new List<Rule>
+        {
+            new() { Name = "图", SourcePath = _dir, TargetPath = target, AutoRenameOnConflict = false,
+                    Conditions = { new ExtensionCondition { Extensions = { "jpg" } } } }
+        };
+        var srcFile = Path.Combine(_dir, "a.jpg");
+        File.WriteAllText(srcFile, "new");
+
+        var file = new FileEntry { FullPath = srcFile, FileName = "a.jpg", Extension = "jpg", LastWriteTime = DateTime.Now };
+        var previews = PreviewService.Build(rules, new[] { file }, DateTime.Now);
+
+        Assert.Equal(PreviewStatus.Conflict, previews[0].Status);
+        Assert.Equal(Path.Combine(target, "a.jpg"), previews[0].DestPath);
+    }
+
     private static readonly DateTime Now = new(2026, 8, 6, 12, 0, 0);
 
     [Fact]
