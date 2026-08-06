@@ -81,4 +81,30 @@ public class OrganizerUndoTests : IDisposable
         Assert.True(File.Exists(src));
         Assert.False(File.Exists(dest));
     }
+
+    [Fact]
+    public void Undo_PartialFailure_ContinuesOthers()
+    {
+        // 一条缺失（Skipped）不得中断其余条目恢复
+        var src = Path.Combine(_root, "a.txt");
+        var dest = Path.Combine(_root, "out", "a.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        File.WriteAllText(dest, "x");
+
+        var record = new OperationRecord
+        {
+            Timestamp = DateTime.Now,
+            Entries =
+            {
+                new LogEntry { Source = Path.Combine(_root, "gone.txt"), Dest = Path.Combine(_root, "out", "gone.txt") },
+                new LogEntry { Source = src, Dest = dest }
+            }
+        };
+        var result = Organizer.Undo(record);
+
+        Assert.Equal(1, result.Restored);
+        Assert.Single(result.Skipped);
+        Assert.True(File.Exists(src));
+        Assert.False(File.Exists(dest));
+    }
 }
