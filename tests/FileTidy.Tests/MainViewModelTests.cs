@@ -330,4 +330,84 @@ public class MainViewModelTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public void Activate_BadCode_SetsErrorFlag()
+    {
+        var dir = Directory.CreateTempSubdirectory("vmAct").FullName;
+        try
+        {
+            var (_, pub) = LicenseCodec.CreateKeyPair();
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
+                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
+            vm.ActivationCode = "FTID-INVALID";
+            vm.ActivateCommand.Execute(null);
+            Assert.True(vm.ActivateResultIsError);
+            Assert.Contains("无效", vm.ActivateResult ?? "");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Activate_ValidCode_ClearsErrorIsError()
+    {
+        var dir = Directory.CreateTempSubdirectory("vmAct2").FullName;
+        try
+        {
+            var (priv, pub) = LicenseCodec.CreateKeyPair();
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
+                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
+            using var rsa = System.Security.Cryptography.RSA.Create();
+            rsa.ImportFromPem(priv);
+            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
+            vm.ActivateCommand.Execute(null);
+            Assert.False(vm.ActivateResultIsError);
+            Assert.Contains("成功", vm.ActivateResult ?? "");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Preview_PopulatesStatusEnum()
+    {
+        var dir = Directory.CreateTempSubdirectory("vmPrev").FullName;
+        try
+        {
+            var src = Path.Combine(dir, "src"); var target = Path.Combine(dir, "target");
+            Directory.CreateDirectory(src); Directory.CreateDirectory(target);
+            File.WriteAllText(Path.Combine(src, "a.jpg"), "x");
+
+            var vm = NewVm(Path.Combine(dir, "ops"));
+            vm.AddRule();
+            vm.SelectedEditor!.Name = "图片"; vm.SelectedEditor.SourcePath = src; vm.SelectedEditor.TargetPath = target;
+            vm.SelectedEditor.AddExtension("jpg");
+
+            await vm.PreviewCommand.ExecuteAsync();
+
+            Assert.Single(vm.PreviewRows);
+            Assert.Equal(PreviewStatus.Moved, vm.PreviewRows[0].Status);
+            Assert.False(vm.PreviewRows[0].Warned);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void LicenseState_StartsTrial_BecomesProAfterActivate()
+    {
+        var dir = Directory.CreateTempSubdirectory("vmLic").FullName;
+        try
+        {
+            var (priv, pub) = LicenseCodec.CreateKeyPair();
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
+                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
+            Assert.Equal(LicenseState.Trial, vm.LicenseState); // 无试用文件 = 新试用期
+
+            using var rsa = System.Security.Cryptography.RSA.Create();
+            rsa.ImportFromPem(priv);
+            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
+            vm.ActivateCommand.Execute(null);
+            Assert.Equal(LicenseState.Pro, vm.LicenseState);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

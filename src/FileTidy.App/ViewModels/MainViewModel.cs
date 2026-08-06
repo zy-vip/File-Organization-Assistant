@@ -12,6 +12,7 @@ public class PreviewRow
     public string? Dest { get; init; }
     public required string StatusText { get; init; }
     public required bool Warned { get; init; }
+    public required PreviewStatus Status { get; init; }
 }
 
 /// <summary>主窗口 ViewModel</summary>
@@ -80,6 +81,7 @@ public class MainViewModel : ObservableObject
         {
             var (ok, message) = _license.Activate(ActivationCode);
             ActivateResult = message;
+            ActivateResultIsError = !ok;
             RefreshLicenseState();
             return Task.CompletedTask;
         });
@@ -170,6 +172,7 @@ public class MainViewModel : ObservableObject
                 : "免费版",
             _ => "免费版（试用已结束，购买 Pro 解锁全部功能）"
         };
+        OnPropertyChanged(nameof(LicenseState));
     }
 
     /// <summary>保存配置（规则编辑实时触发）；自动模式开启时同步刷新监听列表</summary>
@@ -206,6 +209,13 @@ public class MainViewModel : ObservableObject
     /// <summary>激活结果提示</summary>
     public string? ActivateResult { get => _activateResult; private set => SetProperty(ref _activateResult, value); }
     private string? _activateResult;
+
+    /// <summary>激活结果是否为失败（供显示层着色：成功绿 / 失败红）</summary>
+    public bool ActivateResultIsError { get => _actErr; private set => SetProperty(ref _actErr, value); }
+    private bool _actErr;
+
+    /// <summary>许可证状态（供设置页状态文字着色；RefreshLicenseState 时通知）</summary>
+    public LicenseState LicenseState => _license.GetState();
 
     /// <summary>开机自启开关：变更即写注册表并保存</summary>
     public bool StartWithWindows
@@ -299,7 +309,8 @@ public class MainViewModel : ObservableObject
                            : p.Status == PreviewStatus.TemplateError ? "模板错误"
                            : p.Status == PreviewStatus.NeedsPro ? "需解锁 Pro"
                            : "未命中",
-                Warned = p.Status != PreviewStatus.Moved
+                Warned = p.Status != PreviewStatus.Moved,
+                Status = p.Status
             });
         }
     }
