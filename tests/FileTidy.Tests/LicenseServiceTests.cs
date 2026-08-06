@@ -94,6 +94,16 @@ public class LicenseServiceTests : IDisposable
     }
 
     [Fact]
+    public void Activate_LowercasePrefixAccepted()
+    {
+        // 手输小写前缀 ftid- 应被宽容接受（Base32 编码段本已不区分大小写）
+        var svc = NewService();
+        var (ok, _) = svc.Activate(MakeCode().ToLowerInvariant());
+        Assert.True(ok);
+        Assert.Equal(LicenseState.Pro, svc.GetState());
+    }
+
+    [Fact]
     public void Activate_InvalidCodeFails()
     {
         var svc = NewService();

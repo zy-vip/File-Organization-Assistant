@@ -85,6 +85,14 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void Validate_RejectsZeroCaptureIndex()
+    {
+        // 设计只定义 {1} 起的捕获组；{0}（等价完整匹配）应被拒绝
+        var errors = TemplateRenderer.Validate("{0}{ext}");
+        Assert.Contains(errors, e => e.Contains("捕获组"));
+    }
+
+    [Fact]
     public void Validate_RejectsBadDateFormat()
     {
         var errors = TemplateRenderer.Validate("{date:yyyy}");

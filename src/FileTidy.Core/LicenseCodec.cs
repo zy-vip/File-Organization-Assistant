@@ -26,7 +26,10 @@ public static class LicenseCodec
     /// <summary>验证激活码，返回载荷；无效返回 null</summary>
     public static string? Verify(string code, RSA rsa)
     {
-        if (!code.StartsWith("FTID-", StringComparison.Ordinal)) return null;
+        if (string.IsNullOrEmpty(code)) return null;
+        code = code.Trim();
+        // 前缀忽略大小写：Base32 编码段本就大小写宽容，手输小写 ftid- 不应被拒
+        if (code.Length <= 5 || !code[..5].Equals("FTID-", StringComparison.OrdinalIgnoreCase)) return null;
         var parts = code.Split('-');
         if (parts.Length != 3) return null;
         try

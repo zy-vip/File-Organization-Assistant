@@ -44,7 +44,12 @@ public static class TemplateRenderer
                 continue;
             }
             if (name is "original" or "name" or "ext" or "n") continue;
-            if (int.TryParse(name, out _)) continue;
+            if (int.TryParse(name, out var idx))
+            {
+                // 设计只定义 {1} 起的捕获组：{0}（等价完整匹配）与负数均拒绝
+                if (idx < 1) errors.Add($"捕获组索引 {idx} 无效（从 1 开始）");
+                continue;
+            }
             errors.Add($"未知变量 {{{name}}}");
         }
         return errors;
@@ -91,7 +96,9 @@ public static class TemplateRenderer
     private static string CaptureOrEmpty(RegexMatchResult? match, int index)
     {
         if (match is null) throw new InvalidOperationException("捕获组引用但规则无正则匹配结果");
-        if (index >= match.Groups.Count) throw new InvalidOperationException($"捕获组 {index} 未匹配");
+        // 索引从 1 起（设计语义）；可选捕获组未参与匹配时值为空串——属于该组合法匹配结果，
+        // 直接使用不判错误（误判会破坏「可选命名」合法模板），空结果由「渲染结果为空」兜底
+        if (index < 1 || index >= match.Groups.Count) throw new InvalidOperationException($"捕获组 {index} 未匹配");
         return match.Groups[index];
     }
 }
