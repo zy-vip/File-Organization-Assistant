@@ -69,4 +69,90 @@ public class PreviewServiceTests
         Assert.Equal(PreviewStatus.Moved, previews[0].Status);
         Assert.Equal(Path.Combine(target, "a(1).jpg"), previews[0].DestPath);
     }
+
+    private static readonly DateTime Now = new(2026, 8, 6, 12, 0, 0);
+
+    [Fact]
+    public void Build_RenameActionRendersDestName()
+    {
+        var rules = new List<Rule>
+        {
+            new()
+            {
+                Name = "重命名", SourcePath = @"C:\tmp", TargetPath = @"C:\out",
+                Conditions = { new RegexCondition { Pattern = @"(\d{4})\.jpg$" } },
+                Actions = { new MoveAndRenameAction { Template = "{1}_{date:yyyyMMdd}{ext}" } }
+            }
+        };
+        var previews = PreviewService.Build(rules, new[] { FileEntry("a2026.jpg"), FileEntry("b2025.jpg") }, Now);
+        Assert.Equal(PreviewStatus.Moved, previews[0].Status);
+        Assert.Equal(@"C:\out\2026_20260806.jpg", previews[0].DestPath);
+        Assert.Equal(@"C:\out\2025_20260806.jpg", previews[1].DestPath);
+    }
+
+    [Fact]
+    public void Build_SequencePerRuleRestarts()
+    {
+        var r1 = new Rule { SourcePath = @"C:\a", TargetPath = @"C:\out",
+                            Conditions = { new ExtensionCondition { Extensions = { "jpg" } } },
+                            Actions = { new MoveAndRenameAction { Template = "图{n}{ext}" } } };
+        var r2 = new Rule { SourcePath = @"C:\a", TargetPath = @"C:\out2",
+                            Conditions = { new ExtensionCondition { Extensions = { "png" } } },
+                            Actions = { new MoveAndRenameAction { Template = "图{n}{ext}" } } };
+        var previews = PreviewService.Build(new List<Rule> { r1, r2 },
+            new[] { FileEntry("a.jpg"), FileEntry("b.jpg"), FileEntry("c.png") }, Now);
+        Assert.Equal(@"C:\out\图1.jpg", previews[0].DestPath);
+        Assert.Equal(@"C:\out\图2.jpg", previews[1].DestPath);
+        Assert.Equal(@"C:\out2\图1.png", previews[2].DestPath);
+    }
+
+    [Fact]
+    public void Build_TemplateErrorOnBadTemplate()
+    {
+        var rules = new List<Rule>
+        {
+            new() { SourcePath = @"C:\tmp", TargetPath = @"C:\out",
+                    Conditions = { new ExtensionCondition { Extensions = { "jpg" } } },
+                    Actions = { new MoveAndRenameAction { Template = "{1}{ext}" } } } // 无正则条件 → 捕获组缺失
+        };
+        var previews = PreviewService.Build(rules, new[] { FileEntry("a.jpg") }, Now);
+        Assert.Equal(PreviewStatus.TemplateError, previews[0].Status);
+        Assert.Null(previews[0].DestPath);
+    }
+
+    [Fact]
+    public void Build_NeedsProWhenNotAllowed()
+    {
+        var rules = new List<Rule>
+        {
+            new() { SourcePath = @"C:\tmp", TargetPath = @"C:\out",
+                    Conditions = { new RegexCondition { Pattern = @"jpg" } } }
+        };
+        var previews = PreviewService.Build(rules, new[] { FileEntry("a.jpg") }, Now, f => f != ProFeature.RegularExpression);
+        Assert.Equal(PreviewStatus.NeedsPro, previews[0].Status);
+        Assert.Null(previews[0].DestPath);
+        Assert.Equal("正则条件", previews[0].BlockedFeature);
+    }
+
+    [Fact]
+    public void Build_NeedsProJoinsMultipleFeatures()
+    {
+        var rules = new List<Rule>
+        {
+            new() { SourcePath = @"C:\tmp", TargetPath = @"C:\out",
+                    Conditions = { new RegexCondition { Pattern = @"jpg" } },
+                    Actions = { new MoveAndRenameAction { Template = "{1}{ext}" } } }
+        };
+        var previews = PreviewService.Build(rules, new[] { FileEntry("a.jpg") }, Now, _ => false);
+        Assert.Equal(PreviewStatus.NeedsPro, previews[0].Status);
+        Assert.Equal("正则条件 / 重命名模板", previews[0].BlockedFeature);
+    }
+
+    private static FileEntry FileEntry(string name) => new()
+    {
+        FullPath = Path.Combine(@"C:\tmp", name),
+        FileName = name,
+        Extension = Path.GetExtension(name).TrimStart('.').ToLowerInvariant(),
+        LastWriteTime = Now
+    };
 }
