@@ -5,3 +5,4 @@ obj/
 dist/
 testdata/
 testdata-out/
+.worktrees/
