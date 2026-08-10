@@ -6,3 +6,4 @@ dist/
 testdata/
 testdata-out/
 .worktrees/
+*.pem
