@@ -12,13 +12,6 @@ public class MainViewModelTests : IDisposable
     private readonly string _dir = Directory.CreateTempSubdirectory("vm").FullName;
     public void Dispose() => Directory.Delete(_dir, true);
 
-    // 临时许可证：每个用例独立密钥对与文件，避免污染真实试用/激活文件
-    private static LicenseService TempLicense(string dir)
-    {
-        var (_, pub) = LicenseCodec.CreateKeyPair();
-        return new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
-    }
-
     [Fact]
     public void RuleEditor_Validation_ReportsErrors()
     {
@@ -101,8 +94,7 @@ public class MainViewModelTests : IDisposable
     private MainViewModel NewVm(string operationsDir)
         => new(new SettingsService(Path.Combine(_dir, "config.json")),
                coreTimeProvider: () => DateTime.Now,
-               operationsDir: operationsDir,
-               license: TempLicense(_dir));
+               operationsDir: operationsDir);
 
     [Fact]
     public async Task TidyCommand_WithOneRule_MovesFile()
@@ -162,8 +154,7 @@ public class MainViewModelTests : IDisposable
         new SettingsService(Path.Combine(_dir, "config.json")).Save(config);
 
         var vm = new MainViewModel(new SettingsService(Path.Combine(_dir, "config.json")),
-            coreTimeProvider: () => DateTime.Now, operationsDir: opsDir,
-            license: TempLicense(_dir));
+            coreTimeProvider: () => DateTime.Now, operationsDir: opsDir);
 
         Assert.Single(vm.EditorVms);
         Assert.Equal("旧规则", vm.EditorVms[0].Name);
@@ -196,37 +187,6 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Tidy_RecordsTrialUseAndBlocksProWhenExhausted()
-    {
-        var dir = Directory.CreateTempSubdirectory("vm2").FullName;
-        try
-        {
-            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
-            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
-            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
-
-            var (_, pub) = LicenseCodec.CreateKeyPair();
-            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"), trialTidyLimit: 2);
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
-            vm.Rules.Add(new Rule
-            {
-                Name = "正则", SourcePath = srcDir, TargetPath = targetDir,
-                Conditions = { new RegexCondition { Pattern = @"jpg" } }
-            });
-
-            await vm.TidyCommand.ExecuteAsync();
-            Assert.True(File.Exists(Path.Combine(targetDir, "a.jpg")));
-            Assert.Equal(1, license.GetTrialInfo()!.RemainingTidy);;
-
-            File.WriteAllText(Path.Combine(srcDir, "b.jpg"), "x");
-            await vm.TidyCommand.ExecuteAsync();
-            Assert.False(File.Exists(Path.Combine(targetDir, "b.jpg")));
-            Assert.Contains("Pro", vm.ErrorDetails ?? "");
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
     public async Task Tidy_RenameSequenceMatchesPreview()
     {
         var dir = Directory.CreateTempSubdirectory("vm5").FullName;
@@ -237,9 +197,7 @@ public class MainViewModelTests : IDisposable
             File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
             File.WriteAllText(Path.Combine(srcDir, "b.jpg"), "x");
 
-            var (_, pub) = LicenseCodec.CreateKeyPair();
-            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")));
             vm.Rules.Add(new Rule
             {
                 Name = "重命名", SourcePath = srcDir, TargetPath = targetDir,
@@ -260,109 +218,15 @@ public class MainViewModelTests : IDisposable
         var dir = Directory.CreateTempSubdirectory("vm3").FullName;
         try
         {
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: TempLicense(dir));
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")));
             vm.AddRule(); vm.SelectedEditor!.Name = "A";
             vm.AddRule(); vm.SelectedEditor!.Name = "B";
             vm.MoveRule(1, -1);
             Assert.Equal("B", vm.EditorVms[0].Name);
             Assert.Equal("A", vm.EditorVms[1].Name);
             Assert.Equal("B", vm.Rules[0].Name);
-            var reloaded = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: TempLicense(dir));
+            var reloaded = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")));
             Assert.Equal("B", reloaded.Rules[0].Name);
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public async Task Tidy_MovedAndProBlockedMixed_RecordsSkippedWithHint()
-    {
-        var dir = Directory.CreateTempSubdirectory("vm6").FullName;
-        try
-        {
-            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
-            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
-            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
-            File.WriteAllText(Path.Combine(srcDir, "b.png"), "x");
-
-            var (_, pub) = LicenseCodec.CreateKeyPair();
-            // 试用上限 1：首次 RecordTidyUse 后即耗尽 → 本轮 Pro 规则即被拦截（混合场景）
-            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"), trialTidyLimit: 1);
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
-            vm.Rules.Add(new Rule
-            {
-                Name = "免费", SourcePath = srcDir, TargetPath = targetDir,
-                Conditions = { new ExtensionCondition { Extensions = { "jpg" } } }
-            });
-            vm.Rules.Add(new Rule
-            {
-                Name = "正则", SourcePath = srcDir, TargetPath = targetDir,
-                Conditions = { new RegexCondition { Pattern = @"png" } }
-            });
-
-            await vm.TidyCommand.ExecuteAsync();
-
-            Assert.True(File.Exists(Path.Combine(targetDir, "a.jpg")), "免费文件应被移动");
-            Assert.False(File.Exists(Path.Combine(targetDir, "b.png")), "Pro 文件应被拦截");
-            Assert.Contains("跳过 1", vm.StatusText);
-            Assert.Contains("Pro", vm.ErrorDetails ?? "");
-            Assert.Contains("购买后可启用", vm.ErrorDetails);
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void Activate_SetsProText()
-    {
-        var dir = Directory.CreateTempSubdirectory("vm4").FullName;
-        try
-        {
-            var (priv, pub) = LicenseCodec.CreateKeyPair();
-            var license = new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")), license: license);
-            Assert.Contains("试用", vm.LicenseStateText);
-
-            using var rsa = System.Security.Cryptography.RSA.Create();
-            rsa.ImportFromPem(priv);
-            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
-            vm.ActivateCommand.Execute(null);
-            Assert.Contains("Pro 已激活", vm.LicenseStateText);
-            Assert.Contains("成功", vm.ActivateResult ?? "");
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void Activate_BadCode_SetsErrorFlag()
-    {
-        var dir = Directory.CreateTempSubdirectory("vmAct").FullName;
-        try
-        {
-            var (_, pub) = LicenseCodec.CreateKeyPair();
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
-                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
-            vm.ActivationCode = "FTID-INVALID";
-            vm.ActivateCommand.Execute(null);
-            Assert.True(vm.ActivateResultIsError);
-            Assert.Contains("无效", vm.ActivateResult ?? "");
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void Activate_ValidCode_ClearsErrorIsError()
-    {
-        var dir = Directory.CreateTempSubdirectory("vmAct2").FullName;
-        try
-        {
-            var (priv, pub) = LicenseCodec.CreateKeyPair();
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
-                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
-            using var rsa = System.Security.Cryptography.RSA.Create();
-            rsa.ImportFromPem(priv);
-            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
-            vm.ActivateCommand.Execute(null);
-            Assert.False(vm.ActivateResultIsError);
-            Assert.Contains("成功", vm.ActivateResult ?? "");
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -387,26 +251,6 @@ public class MainViewModelTests : IDisposable
             Assert.Single(vm.PreviewRows);
             Assert.Equal(PreviewStatus.Moved, vm.PreviewRows[0].Status);
             Assert.False(vm.PreviewRows[0].Warned);
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void LicenseState_StartsTrial_BecomesProAfterActivate()
-    {
-        var dir = Directory.CreateTempSubdirectory("vmLic").FullName;
-        try
-        {
-            var (priv, pub) = LicenseCodec.CreateKeyPair();
-            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
-                license: new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json")));
-            Assert.Equal(LicenseState.Trial, vm.LicenseState); // 无试用文件 = 新试用期
-
-            using var rsa = System.Security.Cryptography.RSA.Create();
-            rsa.ImportFromPem(priv);
-            vm.ActivationCode = LicenseCodec.Sign(LicenseCodec.GeneratePayload(), rsa);
-            vm.ActivateCommand.Execute(null);
-            Assert.Equal(LicenseState.Pro, vm.LicenseState);
         }
         finally { Directory.Delete(dir, true); }
     }

@@ -21,7 +21,6 @@ public class MainViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly Func<DateTime> _now;
     private readonly string _operationsDir;
-    private readonly LicenseService _license;
     private readonly EngageQueue _queue = new();
     private readonly FolderWatcher _watcher = new();
 
@@ -51,7 +50,6 @@ public class MainViewModel : ObservableObject
     public RelayCommand UndoCommand { get; }
     public RelayCommand AddRuleCommand { get; }
     public RelayCommand DeleteRuleCommand { get; }
-    public RelayCommand ActivateCommand { get; }
     public RelayCommand MoveRuleUpCommand { get; }
     public RelayCommand MoveRuleDownCommand { get; }
 
@@ -62,12 +60,11 @@ public class MainViewModel : ObservableObject
     }
     private RuleEditorViewModel? _selected;
 
-    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null, string? operationsDir = null, LicenseService? license = null)
+    public MainViewModel(SettingsService settings, Func<DateTime>? coreTimeProvider = null, string? operationsDir = null)
     {
         _settings = settings;
         _now = coreTimeProvider ?? (() => DateTime.Now);
         _operationsDir = operationsDir ?? AppPaths.OperationsDir;
-        _license = license ?? new LicenseService(LicenseKeys.AppPublicKeyPem, AppPaths.LicenseFile, AppPaths.TrialFile);
         PreviewCommand = new RelayCommand(PreviewAsync);
         TidyCommand = new RelayCommand(TidyAsync);
         UndoCommand = new RelayCommand(UndoAsync);
@@ -75,14 +72,6 @@ public class MainViewModel : ObservableObject
         DeleteRuleCommand = new RelayCommand(() =>
         {
             if (SelectedEditor is not null) DeleteRule(SelectedEditor);
-            return Task.CompletedTask;
-        });
-        ActivateCommand = new RelayCommand(() =>
-        {
-            var (ok, message) = _license.Activate(ActivationCode);
-            ActivateResult = message;
-            ActivateResultIsError = !ok;
-            RefreshLicenseState();
             return Task.CompletedTask;
         });
         MoveRuleUpCommand = new RelayCommand(() => { if (SelectedEditor is not null) MoveRule(EditorVms.IndexOf(SelectedEditor), -1); return Task.CompletedTask; });
@@ -109,7 +98,6 @@ public class MainViewModel : ObservableObject
         StartWithWindows = config.StartWithWindows;
         AutoRenameOnConflict = config.AutoRenameOnConflict;
         if (AutoTidy) _watcher.Watch(Rules.Select(r => r.SourcePath).ToArray());
-        RefreshLicenseState();
     }
 
     /// <summary>订阅编辑器变更：规则编辑实时保存（配置实时落盘）</summary>
@@ -161,20 +149,6 @@ public class MainViewModel : ObservableObject
         Save();
     }
 
-    /// <summary>刷新许可证状态文案（构造后与激活后调用）</summary>
-    public void RefreshLicenseState()
-    {
-        LicenseStateText = _license.GetState() switch
-        {
-            LicenseState.Pro => "Pro 已激活",
-            LicenseState.Trial => _license.GetTrialInfo() is { } t
-                ? $"免费版（试用剩余 {t.RemainingDays} 天 / {t.RemainingTidy} 次）"
-                : "免费版",
-            _ => "免费版（试用已结束，购买 Pro 解锁全部功能）"
-        };
-        OnPropertyChanged(nameof(LicenseState));
-    }
-
     /// <summary>保存配置（规则编辑实时触发）；自动模式开启时同步刷新监听列表</summary>
     private void Save()
     {
@@ -197,25 +171,6 @@ public class MainViewModel : ObservableObject
         set { if (SetProperty(ref _globalRename, value)) Save(); }
     }
     private bool _globalRename = true;
-
-    /// <summary>许可证状态文案（设置页显示）</summary>
-    public string LicenseStateText { get => _licText; private set => SetProperty(ref _licText, value); }
-    private string _licText = "";
-
-    /// <summary>激活码输入框</summary>
-    public string ActivationCode { get => _code; set => SetProperty(ref _code, value); }
-    private string _code = "";
-
-    /// <summary>激活结果提示</summary>
-    public string? ActivateResult { get => _activateResult; private set => SetProperty(ref _activateResult, value); }
-    private string? _activateResult;
-
-    /// <summary>激活结果是否为失败（供显示层着色：成功绿 / 失败红）</summary>
-    public bool ActivateResultIsError { get => _actErr; private set => SetProperty(ref _actErr, value); }
-    private bool _actErr;
-
-    /// <summary>许可证状态（供设置页状态文字着色；RefreshLicenseState 时通知）</summary>
-    public LicenseState LicenseState => _license.GetState();
 
     /// <summary>开机自启开关：变更即写注册表并保存</summary>
     public bool StartWithWindows
@@ -246,14 +201,6 @@ public class MainViewModel : ObservableObject
         lines.AddRange(skipped.Select(s => $"跳过：{s.Source}：{s.Reason}"));
         ErrorDetails = lines.Count > 0 ? string.Join("\n", lines) : null;
         OnPropertyChanged(nameof(HasErrorDetails));
-    }
-
-    /// <summary>设置执行明细；若跳过原因含 Pro 拦截则追加一行购买提示</summary>
-    private void SetErrorDetailsWithProHint(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
-    {
-        SetErrorDetails(failed, skipped);
-        if (skipped.Any(s => s.Reason.Contains("Pro")))
-            ErrorDetails = $"{ErrorDetails}\n部分规则需要 Pro 解锁，购买后可启用";
     }
 
     private async Task PreviewAsync()
@@ -289,7 +236,7 @@ public class MainViewModel : ObservableObject
         var now = _now();
         foreach (var vm in EditorVms) vm.ApplyToModel();
         var files = ScanAllSources();
-        var previews = PreviewService.Build(Rules.ToList(), files, now, _license.IsAllowed);
+        var previews = PreviewService.Build(Rules.ToList(), files, now);
         if (render) RenderPreviews(previews);
         return previews;
     }
@@ -307,7 +254,6 @@ public class MainViewModel : ObservableObject
                 StatusText = p.Status == PreviewStatus.Moved ? "将移动"
                            : p.Status == PreviewStatus.Conflict ? "冲突"
                            : p.Status == PreviewStatus.TemplateError ? "模板错误"
-                           : p.Status == PreviewStatus.NeedsPro ? "需解锁 Pro"
                            : "未命中",
                 Warned = p.Status != PreviewStatus.Moved,
                 Status = p.Status
@@ -336,11 +282,10 @@ public class MainViewModel : ObservableObject
             await _queue.RunAsync(async () =>
             {
                 await Task.Yield();
-                _license.RecordTidyUse();
                 var previews = BuildPreview();
-                // 传完整批次给 Organizer：NeedsPro 计跳过、TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
+                // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
                 var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                var blocked = previews.Where(p => p.Status is PreviewStatus.NeedsPro or PreviewStatus.TemplateError).ToList();
+                var blocked = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
                 if (movable.Count == 0 && blocked.Count == 0)
                 {
                     StatusText = "没有需要整理的文件";
@@ -348,7 +293,7 @@ public class MainViewModel : ObservableObject
                 }
                 var (result, record) = Organizer.Execute(previews, _now());
                 if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
-                SetErrorDetailsWithProHint(result.Failed, result.Skipped);
+                SetErrorDetails(result.Failed, result.Skipped);
                 StatusText = $"整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}";
                 return true;
             });
@@ -408,9 +353,8 @@ public class MainViewModel : ObservableObject
 await _queue.RunAsync(async () =>
             {
 await Task.Yield();
-                    _license.RecordTidyUse();
                     var previews = BuildPreview(render: false);
-                    // 传完整批次：NeedsPro/TemplateError 计入跳过/失败统计
+                    // 传完整批次：TemplateError 计入失败统计
                     var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
                 if (movable.Count == 0) return false;
                 var (result, record) = Organizer.Execute(previews, _now());

@@ -23,9 +23,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
         AppPaths.EnsureCreated();
-        _vm = new MainViewModel(
-            new SettingsService(AppPaths.ConfigFile),
-            license: new LicenseService(LicenseKeys.AppPublicKeyPem, AppPaths.LicenseFile, AppPaths.TrialFile));
+        _vm = new MainViewModel(new SettingsService(AppPaths.ConfigFile));
 
         var window = new MainWindow { DataContext = _vm };
         MainWindow = window;

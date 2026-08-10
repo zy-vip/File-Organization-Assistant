@@ -34,7 +34,7 @@ public class RuleEditorViewModel : ObservableObject
     public string AgeDays { get => _age; set => SetProperty(ref _age, value); }
     private string _age = "0";
 
-    /// <summary>正则条件文本（Pro）；非空即启用正则条件</summary>
+    /// <summary>正则条件文本；非空即启用正则条件</summary>
     public string RegexPattern { get => _regex; set => SetProperty(ref _regex, value); }
     private string _regex = "";
 
@@ -42,11 +42,11 @@ public class RuleEditorViewModel : ObservableObject
     public bool RegexCaseSensitive { get => _case; set => SetProperty(ref _case, value); }
     private bool _case = false;
 
-    /// <summary>动作类型：move（仅移动） / moveRename（移动并重命名，Pro）</summary>
+    /// <summary>动作类型：move（仅移动） / moveRename（移动并重命名）</summary>
     public string ActionType { get => _action; set => SetProperty(ref _action, value); }
     private string _action = "move";
 
-    /// <summary>重命名模板（Pro，选中 moveRename 时生效）</summary>
+    /// <summary>重命名模板（选中 moveRename 时生效）</summary>
     public string RenameTemplate { get => _template; set => SetProperty(ref _template, value); }
     private string _template = "";
 
