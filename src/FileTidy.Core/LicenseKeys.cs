@@ -5,12 +5,12 @@ public static class LicenseKeys
 {
     public const string AppPublicKeyPem =
         "-----BEGIN PUBLIC KEY-----\n" +
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyWP1upD4yYXbUcE7ahk2\n" +
-        "rguvncNmYjP4jtANGPj/rPuHcyyehUU85rl+g4XUeiL1qXQqZatcqQ/K+TNC8a8U\n" +
-        "yguSPRHdZWCih4TfeE7VY00PFlmoEGjY1Be4xUEKcdFUNShDs71qmFDNu70oa9MV\n" +
-        "EuH0j/yYCtz8MAkY63by9mxYxUaFywnYauiv9uTGoZdGw3gNYOfUVykB9pcBaSnR\n" +
-        "ExXzrscBh5z6WOqHx9Sivx4RWSa2jrQV/kS3prIMXbu8k10ke0pxvS7wKJm0LxUR\n" +
-        "gm2QWvkoeRweQgMLYrv+19ekFmwtQL/bdAPcpuNziebyCF2iCifgT2rE51nPo9nZ\n" +
-        "TQIDAQAB\n" +
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA20zTETQKrBy0NywWHHOe\n" +
+        "cln0L3x2rJZgmAjO2XOGPHOSgkusjgLoi8MfQocaCFH2c+5+ZLY+6z9zf4imr/Gu\n" +
+        "E98D7XHOgqXS3/kdFRcDebV7D7ZXNTOe2FklBc+/yGu/GVtzXWUEYBQkKoGHrAcH\n" +
+        "uUkAr1Urmgk4cd9KvtUyXyooD9FNOLda3TNRO8sGAOo9Tk1IqPhEOOL+jzmN72Hi\n" +
+        "AmOwSRQGcwQl8bTkXOYc83IweRPWG3PCqqrUbl6Zc/VhdmfKid26l5DazmHCKsze\n" +
+        "TDdTdgT5HA59y0Ha+7TKug5gAs/pUAAHKMCxO+iIkwaoBNoQ60k0BpER20YVirKP\n" +
+        "cQIDAQAB\n" +
         "-----END PUBLIC KEY-----";
 }
