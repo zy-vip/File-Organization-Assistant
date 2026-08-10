@@ -7,22 +7,6 @@ namespace FileTidy.Tests;
 public class OrganizerGateTests
 {
     [Fact]
-    public void Execute_NeedsProGoesToSkipped()
-    {
-        var p = new PreviewEntry
-        {
-            File = new FileEntry { FullPath = @"C:\x\a.jpg", FileName = "a.jpg", Extension = "jpg", LastWriteTime = DateTime.Now },
-            MatchedRule = new Rule { Conditions = { new RegexCondition { Pattern = "jpg" } } },
-            Status = PreviewStatus.NeedsPro
-        };
-        var (result, _) = Organizer.Execute(new List<PreviewEntry> { p }, DateTime.Now);
-        Assert.Equal(0, result.Succeeded);
-        Assert.Single(result.Skipped);
-        Assert.Contains("Pro", result.Skipped[0].Reason);
-        Assert.Empty(result.Failed);
-    }
-
-    [Fact]
     public void Execute_TemplateErrorGoesToFailed()
     {
         var p = new PreviewEntry

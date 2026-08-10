@@ -19,8 +19,6 @@ public sealed class RegexCondition : FileCondition
     /// <summary>忽略大小写，默认开启</summary>
     public bool IgnoreCase { get; set; } = true;
 
-    public override ProFeature? RequiredFeature => ProFeature.RegularExpression;
-
     private RegexOptions Options => IgnoreCase ? RegexOptions.IgnoreCase : RegexOptions.None;
 
     // 编译结果缓存：Pattern/IgnoreCase 变化时失效，避免每次匹配重复编译

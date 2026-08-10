@@ -31,11 +31,6 @@ public static class Organizer
 
         foreach (var p in previews)
         {
-            if (p.Status == PreviewStatus.NeedsPro)
-            {
-                result.Skipped.Add(new OrganizeItem { Source = p.File.FullPath, Reason = $"需要 Pro 解锁（{p.BlockedFeature}）" });
-                continue;
-            }
             if (p.Status == PreviewStatus.TemplateError)
             {
                 result.Failed.Add(new OrganizeItem { Source = p.File.FullPath, Reason = "模板错误" });

@@ -145,34 +145,6 @@ public class PreviewServiceTests : IDisposable
         Assert.Null(previews[0].DestPath);
     }
 
-    [Fact]
-    public void Build_NeedsProWhenNotAllowed()
-    {
-        var rules = new List<Rule>
-        {
-            new() { SourcePath = @"C:\tmp", TargetPath = @"C:\out",
-                    Conditions = { new RegexCondition { Pattern = @"jpg" } } }
-        };
-        var previews = PreviewService.Build(rules, new[] { FileEntry("a.jpg") }, Now, f => f != ProFeature.RegularExpression);
-        Assert.Equal(PreviewStatus.NeedsPro, previews[0].Status);
-        Assert.Null(previews[0].DestPath);
-        Assert.Equal("正则条件", previews[0].BlockedFeature);
-    }
-
-    [Fact]
-    public void Build_NeedsProJoinsMultipleFeatures()
-    {
-        var rules = new List<Rule>
-        {
-            new() { SourcePath = @"C:\tmp", TargetPath = @"C:\out",
-                    Conditions = { new RegexCondition { Pattern = @"jpg" } },
-                    Actions = { new MoveAndRenameAction { Template = "{1}{ext}" } } }
-        };
-        var previews = PreviewService.Build(rules, new[] { FileEntry("a.jpg") }, Now, _ => false);
-        Assert.Equal(PreviewStatus.NeedsPro, previews[0].Status);
-        Assert.Equal("正则条件 / 重命名模板", previews[0].BlockedFeature);
-    }
-
     private static FileEntry FileEntry(string name) => new()
     {
         FullPath = Path.Combine(@"C:\tmp", name),

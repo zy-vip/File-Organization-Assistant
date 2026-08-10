@@ -42,12 +42,4 @@ public class RuleActionTests : IDisposable
         var rule = new Rule { Actions = { rename } };
         Assert.Same(rename, rule.EffectiveAction);
     }
-
-    [Fact]
-    public void RequiredFeature_MoveIsFree_RegexConditionIsPro()
-    {
-        Assert.Null(new MoveAction().RequiredFeature);
-        Assert.Equal(ProFeature.RenameTemplate, new MoveAndRenameAction().RequiredFeature);
-        Assert.Null(new ExtensionCondition().RequiredFeature);
-    }
 }

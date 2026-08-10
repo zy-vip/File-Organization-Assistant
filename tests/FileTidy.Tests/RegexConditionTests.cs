@@ -58,12 +58,6 @@ public class RegexConditionTests : IDisposable
     }
 
     [Fact]
-    public void RequiredFeature_IsRegularExpression()
-    {
-        Assert.Equal(ProFeature.RegularExpression, new RegexCondition().RequiredFeature);
-    }
-
-    [Fact]
     public void Serialize_RegexConditionRoundTrips()
     {
         var path = Path.Combine(_dir, "c.json");

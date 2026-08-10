@@ -7,8 +7,6 @@ namespace FileTidy.Core.Models;
 [JsonDerivedType(typeof(MoveAndRenameAction), "moveRename")]
 public abstract class RuleAction
 {
-    /// <summary>所需 Pro 功能；null 表示免费功能</summary>
-    public virtual ProFeature? RequiredFeature => null;
 }
 
 /// <summary>纯移动动作（免费）</summary>
@@ -21,6 +19,4 @@ public sealed class MoveAndRenameAction : RuleAction
 {
     /// <summary>重命名模板</summary>
     public string Template { get; set; } = "";
-
-    public override ProFeature? RequiredFeature => ProFeature.RenameTemplate;
 }

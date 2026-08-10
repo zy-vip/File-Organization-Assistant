@@ -11,9 +11,6 @@ public abstract class FileCondition
 {
     /// <summary>判断文件是否满足条件</summary>
     public abstract bool IsMatch(FileEntry file, DateTime now);
-
-    /// <summary>所需 Pro 功能；null 表示免费条件</summary>
-    public virtual ProFeature? RequiredFeature => null;
 }
 
 /// <summary>扩展名条件：扩展名 ∈ 列表（忽略大小写）</summary>
