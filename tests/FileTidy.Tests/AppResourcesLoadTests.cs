@@ -73,8 +73,8 @@ public class AppResourcesLoadTests
             {
                 "BrWindow", "BrCard", "BrBorder", "BrText", "BrTextSecondary", "BrTextDisabled",
                 "BrushAccent", "BrushAccentHover", "BrushAccentPressed",
-                "BrSuccess", "BrWarning", "BrError", "BrPro",
-                "BrRowMoved", "BrRowConflict", "BrRowNeedsPro", "BrRowTemplateError", "BrRowNoMatch",
+                "BrSuccess", "BrWarning", "BrError",
+                "BrRowMoved", "BrRowConflict", "BrRowTemplateError", "BrRowNoMatch",
                 "BrBannerBg", "BrBannerBorder", "BrBannerText"
             })
                 Assert.NotNull(app.Resources[key]);
@@ -92,7 +92,7 @@ public class AppResourcesLoadTests
             {
                 "BaseButton", "AccentButton", "SecondaryButton", "IconButton",
                 "FormTextBox", "FormComboBox", "FormCheckBox",
-                "CardBorder", "ProBadge", "CardTitleText", "FieldLabel",
+                "CardBorder", "CardTitleText", "FieldLabel",
                 "PageTitleText", "PageSubtitleText"
             })
                 Assert.NotNull(app.Resources[key]);

@@ -141,22 +141,6 @@
         <Setter Property="Padding" Value="14"/>
     </Style>
 
-    <!-- Pro 徽标 -->
-    <Style x:Key="ProBadge" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource BrProSoft}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BrPro}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="3"/>
-        <Setter Property="Padding" Value="5,1"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-    <Style x:Key="ProBadgeText" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="10"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="Foreground" Value="{StaticResource BrPro}"/>
-        <Setter Property="Text" Value="Pro"/>
-    </Style>
-
     <!-- ========== 状态栏 ========== -->
     <Style TargetType="StatusBar">
         <Setter Property="Background" Value="{StaticResource BrCard}"/>
