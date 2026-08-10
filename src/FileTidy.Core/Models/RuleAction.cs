@@ -9,12 +9,12 @@ public abstract class RuleAction
 {
 }
 
-/// <summary>纯移动动作（免费）</summary>
+/// <summary>纯移动动作</summary>
 public sealed class MoveAction : RuleAction
 {
 }
 
-/// <summary>移动 + 重命名模板动作（Pro）</summary>
+/// <summary>移动 + 重命名模板动作</summary>
 public sealed class MoveAndRenameAction : RuleAction
 {
     /// <summary>重命名模板</summary>

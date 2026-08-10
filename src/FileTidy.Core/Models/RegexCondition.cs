@@ -8,7 +8,7 @@ public class RegexMatchResult
     public required IReadOnlyList<string> Groups { get; init; }
 }
 
-/// <summary>正则条件：以正则匹配完整文件名（含扩展名）（Pro）</summary>
+/// <summary>正则条件：以正则匹配完整文件名（含扩展名）</summary>
 public sealed class RegexCondition : FileCondition
 {
     /// <summary>单次匹配超时（毫秒）：防御灾难性回溯（ReDoS）卡死调用线程（预览在 UI 线程执行）</summary>
