@@ -40,4 +40,4 @@ dotnet publish src/FileTidy.App -c Release -r win-x64 -o dist
 
 ## 许可证
 
-待定
+[MIT](LICENSE)
