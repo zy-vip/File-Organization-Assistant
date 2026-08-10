@@ -23,6 +23,7 @@ FileTidy 此前包含一套 Pro 授权体系：激活码（RSA 签名）、14 �
   - `Build` 签名删除 `Func<ProFeature, bool>? isAllowed` 参数及其缺省逻辑
   - 删除 `RuleAllowed`、`FeatureName` 私有方法
   - 其余（匹配、目标路径计算、模板渲染）逻辑不动
+- `Organizer.cs`：`Execute` 中删除 NeedsPro 分支（原先计入 Skipped、原因含 `BlockedFeature`）；TemplateError 分支保留
 
 ## App 层（src/FileTidy.App）
 
@@ -43,7 +44,9 @@ FileTidy 此前包含一套 Pro 授权体系：激活码（RSA 签名）、14 �
 
 ## 测试（tests/FileTidy.Tests）
 
-- 删除 `LicenseServiceTests.cs`
+- 删除 `LicenseServiceTests.cs`、`LicenseToolTests.cs`（后者依赖 `LicenseCodec`/`LicenseKeys`/`private_key.pem`）
+- `OrganizerGateTests.cs`：删除 `Execute_NeedsProGoesToSkipped` 用例，保留 `Execute_TemplateErrorGoesToFailed`
+- `AppResourcesLoadTests.cs`：`Colors_AllKeys_Exist` 键列表删 `BrPro`、`BrRowNeedsPro`；`Controls_AllCoreKeys_Exist` 键列表删 `ProBadge`
 - `MainViewModelTests.cs`：改构造（不再传 license），删除试用/激活相关用例，适配 `LicenseStateText` 等属性删除
 - `RegexConditionTests.cs`：删除 `RequiredFeature` 断言
 - `RuleActionTests.cs`：删除/调整 `RequiredFeature_MoveIsFree_RegexConditionIsPro` 用例
