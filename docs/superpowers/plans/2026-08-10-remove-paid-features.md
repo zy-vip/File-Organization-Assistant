@@ -106,7 +106,7 @@ a. 第 15-20 行删除注释与 `TempLicense` 辅助方法：
         return new LicenseService(pub, Path.Combine(dir, "license.json"), Path.Combine(dir, "trial.json"));
     }
 ```
-同时删除文件顶部第 6 行 `using FileTidy.Core;`（该文件其余代码不再引用 Core 命名空间——注意确认，若还有引用则保留）。
+**保留**文件顶部第 6 行 `using FileTidy.Core;`（该文件仍使用 `SettingsService`、`FileTidyConfig`、`PreviewStatus` 等 Core 根命名空间类型）。
 
 b. 第 101-105 行 `NewVm` 构造删除 `license: TempLicense(_dir),` 一行。
 
@@ -214,15 +214,23 @@ c. 第 38 行签名改为（同时改第 37 行注释去掉 isAllowed 说明）�
         var previews = new List<PreviewEntry>();
 ```
 
-d. 第 51-63 行 NeedsPro 拦截分支整体删除：
+d. 第 51-63 行 NeedsPro 拦截分支整体删除（原代码）：
 ```csharp
             if (!RuleAllowed(rule, isAllowed))
             {
-                var blocked = ...
-                previews.Add(...);
+                var blocked = rule.Conditions.Select(c => c.RequiredFeature)
+                    .Concat(rule.Actions.Select(a => a.RequiredFeature))
+                    .Where(f => f is not null && !isAllowed(f!.Value))
+                    .Select(f => FeatureName(f!.Value));
+                previews.Add(new PreviewEntry
+                {
+                    File = file, MatchedRule = rule, Status = PreviewStatus.NeedsPro,
+                    BlockedFeature = string.Join(" / ", blocked)
+                });
                 continue;
             }
 ```
+删除后 `if (rule is null) { ... continue; }` 之后直接接 `var seq = NextSequence(sequence, rule);`。
 
 e. 第 72-84 行 `RuleAllowed` 与 `FeatureName` 两个私有方法整体删除。
 
