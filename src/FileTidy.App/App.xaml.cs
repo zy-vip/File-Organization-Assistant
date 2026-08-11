@@ -8,6 +8,7 @@ public partial class App : Application
 {
     private TrayIcon? _tray;
     private MainViewModel? _vm;
+    private SingleInstanceGuard? _guard;
 
     /// <summary>应用是否正在退出（托盘"退出"触发；窗口关闭仅隐藏，不退出进程）</summary>
     public static bool IsExiting { get; private set; }
@@ -22,6 +23,14 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _guard = new SingleInstanceGuard("FileTidy.SingleInstance");
+        if (!_guard.IsFirstInstance)
+        {
+            MessageBox.Show("FileTidy 已在运行，请从系统托盘打开主界面。", "文件整理助手",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
         AppPaths.EnsureCreated();
         _vm = new MainViewModel(new SettingsService(AppPaths.ConfigFile));
 
