@@ -152,6 +152,8 @@ public class MainViewModel : ObservableObject
     private const int SaveDebounceMs = 500;
     /// <summary>保存失败提示文案：防抖与同步保存路径共用</summary>
     private const string SaveFailedText = "保存失败：config 配置写入错误，请检查磁盘空间或权限";
+    /// <summary>监听同步失败提示文案（与保存分开：配置已成功落盘，仅监听未能建立）</summary>
+    private const string SyncFailedText = "监听同步失败：源文件夹已不存在或无法访问";
     private CancellationTokenSource? _saveCts;
 
     /// <summary>结构操作立即落盘（规则增删、排序、开关切换、加载）；AddRule 除外——原行为不保存，靠后续编辑触发</summary>
@@ -159,15 +161,11 @@ public class MainViewModel : ObservableObject
     {
         _saveCts?.Cancel();
         // 同步路径同样要兜底：磁盘满/权限不足时给出提示，避免未处理异常崩溃
-        try
-        {
-            ApplyAndSave();
-            SyncWatchers();
-        }
-        catch (Exception)
-        {
-            StatusText = SaveFailedText;
-        }
+        try { ApplyAndSave(); }
+        catch (Exception) { StatusText = SaveFailedText; return; }
+        // 监听同步单独兜底：配置已落盘，仅目录恰好被删等场景误报"保存失败"会误导用户
+        try { SyncWatchers(); }
+        catch (Exception) { StatusText = SyncFailedText; }
     }
 
     /// <summary>编辑器输入防抖落盘：500ms 内连续变更只写一次</summary>
@@ -182,17 +180,11 @@ public class MainViewModel : ObservableObject
     {
         try { await Task.Delay(SaveDebounceMs, token); }
         catch (OperationCanceledException) { return; }
-        // 落盘与监听同步不得抛出未观察异常：失败时给出状态提示，避免配置丢失且用户零感知
-        try
-        {
-            ApplyAndSave();
-            SyncWatchers();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception)
-        {
-            StatusText = SaveFailedText;
-        }
+        // 落盘与监听同步失败时给出状态提示，避免配置丢失且用户零感知
+        try { ApplyAndSave(); }
+        catch (Exception) { StatusText = SaveFailedText; return; }
+        try { SyncWatchers(); }
+        catch (Exception) { StatusText = SyncFailedText; }
     }
 
     private void ApplyAndSave()
@@ -291,11 +283,13 @@ public class MainViewModel : ObservableObject
             return new RunOutcome($"预览完成，共 {previews.Count} 个文件", Array.Empty<OrganizeItem>(), Array.Empty<OrganizeItem>());
         });
 
-    /// <summary>构建预览并填充表格（render=true 时刷新 PreviewRows；自动整理走后台线程，仅计算不渲染避免跨线程改 UI 集合）</summary>
+    /// <summary>构建预览并填充表格（render=true 时刷新 PreviewRows；自动整理走后台线程，仅计算不渲染避免跨线程改 UI 集合）。
+    /// 枚举 EditorVms 时先快照：手动/自动命令都在后台线程执行，与 UI 线程的增删/拖拽并存，直接枚举可能抛"集合已更改"；
+    /// ApplyToModel 逐属性引用写入，快照后成员写仍原子。另：整理扫描期间用户在输入的规则编辑可能被读到新旧混合状态，属已知短暂窗口</summary>
     private List<PreviewEntry> BuildPreview(bool render = true)
     {
         var now = _now();
-        foreach (var vm in EditorVms) vm.ApplyToModel();
+        foreach (var vm in EditorVms.ToList()) vm.ApplyToModel();
         var files = ScanAllSources();
         var previews = PreviewService.Build(Rules.ToList(), files, now);
         if (render) RenderPreviews(previews);
@@ -407,20 +401,12 @@ public class MainViewModel : ObservableObject
                 });
                 return;
             }
-            catch (InvalidOperationException ex)
+            catch (BusyException)
             {
-                // 分流忙与真实失败：队列仍忙则重试；否则说明整理逻辑内部抛了 IOE（如保存失败），
-                // 按真实失败通知用户，避免重试 3 次后静默丢弃
-                if (_queue.IsBusy)
-                {
-                    if (attempt == AutoTidyMaxRetries) return; // 仍忙则丢弃本次触发，避免无限重试
-                    await Task.Delay(AutoTidyRetryIntervalMs);
-                }
-                else
-                {
-                    TidyCompleted?.Invoke($"自动整理失败：{ex.Message}");
-                    return;
-                }
+                // 忙拒绝按异常类型分流，不再依赖瞬时的 IsBusy 反推：避免占用任务恰在异常瞬间清位的竞态，
+                // 把"忙拒绝"误判为真实失败；重试节奏保持 3 次×500ms
+                if (attempt == AutoTidyMaxRetries) return; // 仍忙则丢弃本次触发，避免无限重试
+                await Task.Delay(AutoTidyRetryIntervalMs);
             }
             catch (Exception ex)
             {
@@ -432,7 +418,10 @@ public class MainViewModel : ObservableObject
 
     private bool _shutdown;
 
-    /// <summary>应用退出前的收尾：保存配置并停止监听（幂等，可被窗口关闭与退出流程重复调用）</summary>
+    /// <summary>窗口隐藏时冲刷防抖保存；不停止监听——隐藏到托盘后自动整理继续工作（原 Shutdown 会 dispose watcher 导致自动整理永久失效，已拆分）</summary>
+    public void FlushSave() => SaveNow();
+
+    /// <summary>应用退出前的收尾：保存配置并停止监听（幂等，可被退出流程重复调用；仅 App.OnExit 调用）</summary>
     public void Shutdown()
     {
         if (_shutdown) return;

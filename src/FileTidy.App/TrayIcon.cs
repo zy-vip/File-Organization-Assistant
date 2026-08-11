@@ -26,16 +26,16 @@ public sealed class TrayIcon : IDisposable
             _icon.ShowBalloonTip("文件整理助手", msg, BalloonIcon.Info));
     }
 
-    /// <summary>从当前可执行文件提取图标；失败时返回 null（不阻塞启动）</summary>
-    private static System.Drawing.Icon? LoadIcon()
+    /// <summary>提取当前可执行文件的图标；失败时回退系统默认图标，避免托盘无图标而窗口关闭后无法找回</summary>
+    private static System.Drawing.Icon LoadIcon()
     {
         try
         {
-            return System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "");
+            return System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? System.Drawing.SystemIcons.Application;
         }
         catch
         {
-            return null;
+            return System.Drawing.SystemIcons.Application;
         }
     }
 

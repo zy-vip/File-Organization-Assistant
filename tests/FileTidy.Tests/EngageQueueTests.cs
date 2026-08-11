@@ -15,11 +15,11 @@ public class EngageQueueTests
     }
 
     [Fact]
-    public async Task RunAsync_RejectsWhenBusy()
+    public async Task RunAsync_Busy_ThrowsBusyException()
     {
         var q = new EngageQueue();
         var first = q.RunAsync(async () => { await Task.Delay(200); return 1; });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => q.RunAsync(() => Task.FromResult(2)));
+        await Assert.ThrowsAsync<BusyException>(() => q.RunAsync(() => Task.FromResult(2)));
         await first;
     }
 
@@ -41,7 +41,7 @@ public class EngageQueueTests
                 await q.RunAsync(async () => { await gate.Task; return 1; });
                 Interlocked.Increment(ref succeeded);
             }
-            catch (InvalidOperationException)
+            catch (BusyException)
             {
                 Interlocked.Increment(ref rejected);
             }

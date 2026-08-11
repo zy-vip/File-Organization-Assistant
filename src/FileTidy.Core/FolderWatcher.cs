@@ -87,6 +87,7 @@ public sealed class FolderWatcher : IDisposable
     {
         // 缓冲溢出或目录被删：对已不存在的目录释放 watcher（重建后由 Sync/Replace 重新监听），
         // 剩余 watcher 复位事件开关并触发一次重扫，避免溢出期间的文件变更永久丢失
+        var hasWatchers = false;
         lock (_lock)
         {
             foreach (var w in _watchers.ToList())
@@ -100,8 +101,10 @@ public sealed class FolderWatcher : IDisposable
                 try { w.EnableRaisingEvents = false; w.EnableRaisingEvents = true; }
                 catch { }
             }
+            // 持锁判定：与 Dispose 清空列表互斥，避免锁外读到半清空状态
+            hasWatchers = _watchers.Count > 0;
         }
-        if (_watchers.Count > 0) TidyTriggered?.Invoke();
+        if (hasWatchers) TidyTriggered?.Invoke();
     }
 
     public void Dispose()

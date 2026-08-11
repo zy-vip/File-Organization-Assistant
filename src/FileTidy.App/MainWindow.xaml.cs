@@ -12,13 +12,14 @@ public partial class MainWindow : Window
         Closing += OnClosing;
     }
 
-    /// <summary>关闭窗口 = 隐藏到托盘；仅当应用正在退出（托盘"退出"菜单）时才真正关闭</summary>
+    /// <summary>关闭窗口 = 隐藏到托盘；仅当应用正在退出（托盘"退出"菜单）时才真正关闭。
+    /// 隐藏时只冲刷防抖保存，不停止监听：隐藏到托盘后自动整理继续工作</summary>
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (App.IsExiting) return;
         e.Cancel = true;
         Hide();
-        (DataContext as MainViewModel)?.Shutdown();
+        (DataContext as MainViewModel)?.FlushSave();
     }
 
     /// <summary>拖拽判定阈值（像素）：小于该距离视为点击而非拖拽</summary>
