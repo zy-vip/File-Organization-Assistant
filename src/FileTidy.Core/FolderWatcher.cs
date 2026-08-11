@@ -82,18 +82,23 @@ public sealed class FolderWatcher : IDisposable
 
     private void OnError(object sender, ErrorEventArgs e)
     {
-        // 缓冲溢出：重建监听（保留原路径）并触发一次重扫，避免溢出期间的文件变更永久丢失
-        List<string> paths;
+        // 缓冲溢出或目录被删：对已不存在的目录释放 watcher（重建后由 Sync/Replace 重新监听），
+        // 剩余 watcher 复位事件开关并触发一次重扫，避免溢出期间的文件变更永久丢失
         lock (_lock)
         {
-            paths = _watchers.Select(w => w.Path).ToList();
             foreach (var w in _watchers.ToList())
+            {
+                if (Directory.Exists(w.Path)) continue;
+                w.Dispose();
+                _watchers.Remove(w);
+            }
+            foreach (var w in _watchers)
             {
                 try { w.EnableRaisingEvents = false; w.EnableRaisingEvents = true; }
                 catch { }
             }
         }
-        if (paths.Count > 0) TidyTriggered?.Invoke();
+        if (_watchers.Count > 0) TidyTriggered?.Invoke();
     }
 
     public void Dispose()
