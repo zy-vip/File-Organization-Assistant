@@ -173,8 +173,17 @@ public class MainViewModel : ObservableObject
     {
         try { await Task.Delay(SaveDebounceMs, token); }
         catch (OperationCanceledException) { return; }
-        ApplyAndSave();
-        SyncWatchers();
+        // 落盘与监听同步不得抛出未观察异常：失败时给出状态提示，避免配置丢失且用户零感知
+        try
+        {
+            ApplyAndSave();
+            SyncWatchers();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception)
+        {
+            StatusText = "保存失败：config 配置写入错误，请检查磁盘空间或权限";
+        }
     }
 
     private void ApplyAndSave()
