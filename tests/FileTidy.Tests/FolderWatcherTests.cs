@@ -91,4 +91,34 @@ public class FolderWatcherTests : IDisposable
             Directory.Delete(dir2, true);
         }
     }
+
+    [Fact]
+    public async Task Sync_AddsNew_RemovesGone_KeepsExisting()
+    {
+        var dir2 = Path.Combine(Path.GetTempPath(), "watch-sync-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir2);
+        try
+        {
+            var a = Path.Combine(_dir, "a"); var b = Path.Combine(_dir, "b");
+            Directory.CreateDirectory(a); Directory.CreateDirectory(b);
+            Directory.CreateDirectory(dir2); // Sync 只监听已存在目录，c 必须提前创建
+
+            _watcher = new FolderWatcher();
+            _watcher.Watch(new[] { a, b });
+
+            var count = 0;
+            _watcher.TidyTriggered += () => count++;
+            _watcher.Sync(new[] { b, dir2 }); // b 保留、a 移除、dir2 新增
+
+            File.WriteAllText(Path.Combine(dir2, "new.txt"), "x");
+            await Task.Delay(500);
+            var afterNew = count;
+            Assert.True(afterNew > 0, "新增目录应被监听");
+
+            File.WriteAllText(Path.Combine(a, "old.txt"), "x");
+            await Task.Delay(500);
+            Assert.Equal(afterNew, count); // 已移除目录不再触发
+        }
+        finally { Directory.Delete(dir2, true); }
+    }
 }

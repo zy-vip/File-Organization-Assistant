@@ -10,6 +10,22 @@ public sealed class FolderWatcher : IDisposable
     /// <summary>有文件变更时触发（由调用方决定延迟与整理）</summary>
     public event Action? TidyTriggered;
 
+    /// <summary>为单个文件夹创建监听并加入集合（Watch/Sync 共用）</summary>
+    private void AddWatcher(string folder)
+    {
+        var watcher = new FileSystemWatcher(folder)
+        {
+            IncludeSubdirectories = true,
+            InternalBufferSize = 64 * 1024
+        };
+        watcher.Created += OnChanged;
+        watcher.Renamed += OnChanged;
+        watcher.Changed += OnChanged;
+        watcher.Error += OnError;
+        watcher.EnableRaisingEvents = true;
+        _watchers.Add(watcher);
+    }
+
     /// <summary>开始监听指定文件夹（已监听过的自动去重）</summary>
     public void Watch(IReadOnlyList<string> folders)
     {
@@ -21,17 +37,31 @@ public sealed class FolderWatcher : IDisposable
             {
                 if (_watchers.Any(w => string.Equals(w.Path.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
                     continue;
-                var watcher = new FileSystemWatcher(folder)
+                AddWatcher(folder);
+            }
+        }
+    }
+
+    /// <summary>增量同步监听：新增目录建监听、已移除目录停监听，现存 watcher 不动（区别于 Replace 的全量重建）</summary>
+    public void Sync(IReadOnlyList<string> folders)
+    {
+        var targets = folders.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        lock (_lock)
+        {
+            if (_disposed) return;
+            foreach (var folder in targets)
+            {
+                if (_watchers.Any(w => string.Equals(w.Path.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                AddWatcher(folder);
+            }
+            foreach (var w in _watchers.ToList())
+            {
+                if (!targets.Any(t => string.Equals(t.TrimEnd('\\'), w.Path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
                 {
-                    IncludeSubdirectories = true,
-                    InternalBufferSize = 64 * 1024
-                };
-                watcher.Created += OnChanged;
-                watcher.Renamed += OnChanged;
-                watcher.Changed += OnChanged;
-                watcher.Error += OnError;
-                watcher.EnableRaisingEvents = true;
-                _watchers.Add(watcher);
+                    w.Dispose();
+                    _watchers.Remove(w);
+                }
             }
         }
     }

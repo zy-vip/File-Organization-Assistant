@@ -310,4 +310,23 @@ public class MainViewModelTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task EditDebounce_RepeatedTyping_SavesOnceAfterIdle()
+    {
+        var configPath = Path.Combine(_dir, "config.json");
+        new SettingsService(configPath).Save(new FileTidyConfig()); // 预置空配置，保证防抖断言时文件已存在
+        var vm = NewVm(Path.Combine(_dir, "ops"));
+        vm.AddRule();
+        vm.SelectedEditor!.Name = "规则";
+
+        vm.SelectedEditor.Name = "规则一";   // 连续输入触发防抖
+        vm.SelectedEditor.Name = "规则一二";
+        Assert.DoesNotContain("规则一二", File.ReadAllText(configPath)); // 防抖窗口内未落盘
+
+        await Task.Delay(1200);             // 等待防抖窗口 + 落盘
+
+        var reloaded = new MainViewModel(new SettingsService(configPath));
+        Assert.Equal("规则一二", reloaded.Rules[0].Name);
+    }
 }

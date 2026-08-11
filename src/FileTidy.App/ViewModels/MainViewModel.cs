@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading;
 using FileTidy.App;
 using FileTidy.Core;
 using FileTidy.Core.Models;
@@ -31,13 +32,13 @@ public class MainViewModel : ObservableObject
     public bool Busy { get => _busy; private set => SetProperty(ref _busy, value); }
     private string _status = "就绪"; private bool _busy;
 
-    /// <summary>自动整理开关：变更即保存并刷新监听列表（Replace 在 Save 内统一处理）</summary>
+    /// <summary>自动整理开关：变更即保存并增量同步监听列表</summary>
     public bool AutoTidy
     {
         get => _auto;
         set
         {
-            if (SetProperty(ref _auto, value)) Save();
+            if (SetProperty(ref _auto, value)) SaveNow();
         }
     }
     private bool _auto;
@@ -85,7 +86,7 @@ public class MainViewModel : ObservableObject
     {
         var config = _settings.Load();
         _retention = config.OperationLogRetention;
-        // 先填充规则再置开关属性：开关 setter 会触发 Save()，避免空规则覆盖已存配置
+        // 先填充规则再置开关属性：开关 setter 会触发 SaveNow()，避免空规则覆盖已存配置
         foreach (var rule in config.Rules)
         {
             Rules.Add(rule);
@@ -100,9 +101,9 @@ public class MainViewModel : ObservableObject
         if (AutoTidy) _watcher.Watch(Rules.Select(r => r.SourcePath).ToArray());
     }
 
-    /// <summary>订阅编辑器变更：规则编辑实时保存（配置实时落盘）</summary>
+    /// <summary>订阅编辑器变更：编辑器文本输入走防抖保存（500ms 窗口内只写一次盘）</summary>
     private void Attach(RuleEditorViewModel vm)
-        => vm.PropertyChanged += (_, _) => Save();
+        => vm.PropertyChanged += (_, _) => DebouncedSave();
 
     private static RuleEditorViewModel FromRule(Rule rule) => new()
     {
@@ -136,7 +137,7 @@ public class MainViewModel : ObservableObject
     {
         EditorVms.Remove(vm);
         Rules.Remove(vm.Model);
-        Save();
+        SaveNow();
     }
 
     /// <summary>移动规则：delta 为 -1/+1；EditorVms 与 Rules 同步重排并保存</summary>
@@ -146,11 +147,37 @@ public class MainViewModel : ObservableObject
         if (index < 0 || newIndex < 0 || newIndex >= EditorVms.Count) return;
         EditorVms.Move(index, newIndex);
         Rules.Move(index, newIndex);
-        Save();
+        SaveNow();
     }
 
-    /// <summary>保存配置（规则编辑实时触发）；自动模式开启时同步刷新监听列表</summary>
-    private void Save()
+    private const int SaveDebounceMs = 500;
+    private CancellationTokenSource? _saveCts;
+
+    /// <summary>结构操作立即落盘（规则增删、排序、开关切换、加载）；AddRule 除外——原行为不保存，靠后续编辑触发</summary>
+    private void SaveNow()
+    {
+        _saveCts?.Cancel();
+        ApplyAndSave();
+        SyncWatchers();
+    }
+
+    /// <summary>编辑器输入防抖落盘：500ms 内连续变更只写一次</summary>
+    private void DebouncedSave()
+    {
+        _saveCts?.Cancel();
+        var cts = _saveCts = new CancellationTokenSource();
+        _ = DebouncedSaveAsync(cts.Token);
+    }
+
+    private async Task DebouncedSaveAsync(CancellationToken token)
+    {
+        try { await Task.Delay(SaveDebounceMs, token); }
+        catch (OperationCanceledException) { return; }
+        ApplyAndSave();
+        SyncWatchers();
+    }
+
+    private void ApplyAndSave()
     {
         foreach (var vm in EditorVms) vm.ApplyToModel();
         _settings.Save(new FileTidyConfig
@@ -161,14 +188,19 @@ public class MainViewModel : ObservableObject
             OperationLogRetention = _retention,
             StartWithWindows = StartWithWindows
         });
-        if (AutoTidy) _watcher.Replace(Rules.Select(r => r.SourcePath).ToArray());
+    }
+
+    /// <summary>自动模式开启时增量同步监听列表（区别于 Replace：不重建现存 watcher）</summary>
+    private void SyncWatchers()
+    {
+        if (AutoTidy) _watcher.Sync(Rules.Select(r => r.SourcePath).ToArray());
     }
 
     /// <summary>全局冲突序号开关：作为新规则的默认值；规则级开关仍优先</summary>
     public bool AutoRenameOnConflict
     {
         get => _globalRename;
-        set { if (SetProperty(ref _globalRename, value)) Save(); }
+        set { if (SetProperty(ref _globalRename, value)) SaveNow(); }
     }
     private bool _globalRename = true;
 
@@ -181,7 +213,7 @@ public class MainViewModel : ObservableObject
             if (SetProperty(ref _startup, value))
             {
                 AutoStartService.SetEnabled(value);
-                Save();
+                SaveNow();
             }
         }
     }
@@ -390,7 +422,7 @@ public class MainViewModel : ObservableObject
     {
         if (_shutdown) return;
         _shutdown = true;
-        Save();
+        SaveNow();
         _watcher.Dispose();
     }
 }
