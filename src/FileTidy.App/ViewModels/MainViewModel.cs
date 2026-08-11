@@ -244,33 +244,43 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasErrorDetails));
     }
 
-    private async Task PreviewAsync()
+    /// <summary>一次后台操作的执行结果：Status 为空则不改状态文案；Failed/Skipped 为 null 则不改明细</summary>
+    private sealed record RunOutcome(string? Status, IReadOnlyList<OrganizeItem>? Failed, IReadOnlyList<OrganizeItem>? Skipped);
+
+    /// <summary>命令执行骨架：互斥队列 + 状态/明细更新 + 忙拒绝与异常文案；execute 内部自行划分后台 IO 与 UI 更新</summary>
+    private async Task RunExclusiveAsync(string busyText, string busyRejectText, string errorText,
+        Func<Task<RunOutcome>> execute)
     {
         if (Busy) return;
         try
         {
-            Busy = true; StatusText = "正在扫描…";
-            List<PreviewEntry>? previews = null;
+            Busy = true;
+            StatusText = busyText;
             await _queue.RunAsync(async () =>
             {
-                previews = await Task.Run(() => BuildPreview(render: false)); // 扫描在后台线程
-                RenderPreviews(previews);                                     // 集合更新回调用上下文（UI）
+                var outcome = await execute();
+                if (outcome.Status is not null) StatusText = outcome.Status;
+                if (outcome.Failed is not null || outcome.Skipped is not null)
+                    SetErrorDetails(outcome.Failed ?? Array.Empty<OrganizeItem>(), outcome.Skipped ?? Array.Empty<OrganizeItem>());
                 return true;
             });
-            SetErrorDetails(Array.Empty<OrganizeItem>(), Array.Empty<OrganizeItem>());
-            StatusText = $"预览完成，共 {previews?.Count ?? 0} 个文件";
         }
-        catch (InvalidOperationException)
-        {
-            StatusText = "整理正在进行中，请稍候";
-        }
+        catch (InvalidOperationException) { StatusText = busyRejectText; }
         catch (Exception ex)
         {
-            StatusText = "预览失败";
+            StatusText = errorText;
             SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
         }
         finally { Busy = false; }
     }
+
+    private async Task PreviewAsync()
+        => await RunExclusiveAsync("正在扫描…", "整理正在进行中，请稍候", "预览失败", async () =>
+        {
+            var previews = await Task.Run(() => BuildPreview(render: false)); // 扫描后台，渲染回 UI
+            RenderPreviews(previews);
+            return new RunOutcome($"预览完成，共 {previews.Count} 个文件", Array.Empty<OrganizeItem>(), Array.Empty<OrganizeItem>());
+        });
 
     /// <summary>构建预览并填充表格（render=true 时刷新 PreviewRows；自动整理走后台线程，仅计算不渲染避免跨线程改 UI 集合）</summary>
     private List<PreviewEntry> BuildPreview(bool render = true)
@@ -316,83 +326,43 @@ public class MainViewModel : ObservableObject
     }
 
     private async Task TidyAsync()
-    {
-        if (Busy) return;
-        try
+        => await RunExclusiveAsync("正在整理…", "整理正在进行中，请稍候", "整理失败", async () =>
         {
-            Busy = true;
-            await _queue.RunAsync(async () =>
+            var (result, earlyExit, previews) = await Task.Run(() =>
             {
-                var outcome = await Task.Run(() =>
-                {
-                    var previews = BuildPreview(render: false);
-                    // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
-                    var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                    var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
-                    if (movable.Count == 0 && templateErrors.Count == 0)
-                        return (Result: (OrganizeResult?)null, Failed: (List<OrganizeItem>?)null,
-                                Skipped: (List<OrganizeItem>?)null, Previews: previews, Handled: false);
-                    var (result, record) = Organizer.Execute(previews, _now());
-                    if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
-                    return (Result: result, Failed: result.Failed, Skipped: result.Skipped, Previews: previews, Handled: true);
-                });
-                RenderPreviews(outcome.Previews!); // 恢复旧行为：整理时同步刷新预览表格（早退分支同样刷新）
-                if (!outcome.Handled)
-                {
-                    StatusText = "没有需要整理的文件";
-                    return false; // 无任何可执行/可报告条目，不落空日志；ErrorDetails 不动（与旧行为一致）
-                }
-                SetErrorDetails(outcome.Failed!, outcome.Skipped!);
-                StatusText = $"整理完成：成功 {outcome.Result!.Succeeded}，跳过 {outcome.Result.Skipped.Count}，失败 {outcome.Result.Failed.Count}";
-                return true;
+                var previews = BuildPreview(render: false);
+                // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
+                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
+                if (movable.Count == 0 && templateErrors.Count == 0)
+                    return (Result: (OrganizeResult?)null, EarlyExit: true, Previews: previews);
+                var (result, record) = Organizer.Execute(previews, _now());
+                if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
+                return (Result: result, EarlyExit: false, Previews: previews);
             });
-        }
-        catch (InvalidOperationException)
-        {
-            StatusText = "整理正在进行中，请稍候";
-        }
-        catch (Exception ex)
-        {
-            StatusText = "整理失败";
-            SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
-        }
-        finally { Busy = false; }
-    }
+            RenderPreviews(previews); // 恢复旧行为：整理时同步刷新预览表格（早退分支同样刷新）
+            if (earlyExit) return new RunOutcome("没有需要整理的文件", null, null);
+            return new RunOutcome(
+                $"整理完成：成功 {result!.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}",
+                result.Failed, result.Skipped);
+        });
 
     private async Task UndoAsync()
-    {
-        if (Busy) return;
-        try
+        => await RunExclusiveAsync("正在撤销…", "整理正在进行中，请稍候", "撤销失败", async () =>
         {
-            Busy = true;
-            await _queue.RunAsync(async () =>
+            var (result, found) = await Task.Run(() =>
             {
-                var outcome = await Task.Run(() =>
-                {
-                    var log = new OperationLog(_operationsDir, _retention);
-                    var record = log.Latest();
-                    if (record is null) return (Result: (Organizer.UndoResult?)null, Found: false);
-                    var result = Organizer.Undo(record);
-                    log.DiscardLatest();
-                    return (Result: result, Found: true);
-                });
-                if (!outcome.Found) { StatusText = "没有可撤销的操作"; return false; }
-                SetErrorDetails(Array.Empty<OrganizeItem>(), outcome.Result!.Skipped);
-                StatusText = $"已撤销：还原 {outcome.Result.Restored}，跳过 {outcome.Result.Skipped.Count}";
-                return true;
+                var log = new OperationLog(_operationsDir, _retention);
+                var record = log.Latest();
+                if (record is null) return (Result: (Organizer.UndoResult?)null, Found: false);
+                var result = Organizer.Undo(record);
+                log.DiscardLatest();
+                return (Result: result, Found: true);
             });
-        }
-        catch (InvalidOperationException)
-        {
-            StatusText = "整理正在进行中，请稍候";
-        }
-        catch (Exception ex)
-        {
-            StatusText = "撤销失败";
-            SetErrorDetails(new[] { new OrganizeItem { Source = "", Reason = ex.Message } }, Array.Empty<OrganizeItem>());
-        }
-        finally { Busy = false; }
-    }
+            if (!found) return new RunOutcome("没有可撤销的操作", null, null);
+            return new RunOutcome($"已撤销：还原 {result!.Restored}，跳过 {result.Skipped.Count}",
+                Array.Empty<OrganizeItem>(), result.Skipped);
+        });
 
     /// <summary>自动整理触发后的延迟：等待写文件完成，避免读到半成品</summary>
     private const int AutoTidyDebounceMs = 3000;
