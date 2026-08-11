@@ -209,14 +209,15 @@ public class MainViewModel : ObservableObject
         try
         {
             Busy = true; StatusText = "正在扫描…";
+            List<PreviewEntry>? previews = null;
             await _queue.RunAsync(async () =>
             {
-                await Task.Yield();
-                BuildPreview();
+                previews = await Task.Run(() => BuildPreview(render: false)); // 扫描在后台线程
+                RenderPreviews(previews);                                     // 集合更新回调用上下文（UI）
                 return true;
             });
             SetErrorDetails(Array.Empty<OrganizeItem>(), Array.Empty<OrganizeItem>());
-            StatusText = $"预览完成，共 {PreviewRows.Count} 个文件";
+            StatusText = $"预览完成，共 {previews?.Count ?? 0} 个文件";
         }
         catch (InvalidOperationException)
         {
@@ -281,20 +282,26 @@ public class MainViewModel : ObservableObject
             Busy = true;
             await _queue.RunAsync(async () =>
             {
-                await Task.Yield();
-                var previews = BuildPreview();
-                // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
-                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
-                if (movable.Count == 0 && templateErrors.Count == 0)
+                var outcome = await Task.Run(() =>
+                {
+                    var previews = BuildPreview(render: false);
+                    // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
+                    var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                    var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
+                    if (movable.Count == 0 && templateErrors.Count == 0)
+                        return (Result: (OrganizeResult?)null, Failed: (List<OrganizeItem>?)null,
+                                Skipped: (List<OrganizeItem>?)null, Handled: false);
+                    var (result, record) = Organizer.Execute(previews, _now());
+                    if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
+                    return (Result: result, Failed: result.Failed, Skipped: result.Skipped, Handled: true);
+                });
+                if (!outcome.Handled)
                 {
                     StatusText = "没有需要整理的文件";
                     return false; // 无任何可执行/可报告条目，不落空日志
                 }
-                var (result, record) = Organizer.Execute(previews, _now());
-                if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
-                SetErrorDetails(result.Failed, result.Skipped);
-                StatusText = $"整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}";
+                SetErrorDetails(outcome.Failed!, outcome.Skipped!);
+                StatusText = $"整理完成：成功 {outcome.Result!.Succeeded}，跳过 {outcome.Result.Skipped.Count}，失败 {outcome.Result.Failed.Count}";
                 return true;
             });
         }
@@ -318,14 +325,18 @@ public class MainViewModel : ObservableObject
             Busy = true;
             await _queue.RunAsync(async () =>
             {
-                await Task.Yield();
-                var log = new OperationLog(_operationsDir, _retention);
-                var record = log.Latest();
-                if (record is null) { StatusText = "没有可撤销的操作"; return false; }
-                var result = Organizer.Undo(record);
-                log.DiscardLatest();
-                SetErrorDetails(Array.Empty<OrganizeItem>(), result.Skipped);
-                StatusText = $"已撤销：还原 {result.Restored}，跳过 {result.Skipped.Count}";
+                var outcome = await Task.Run(() =>
+                {
+                    var log = new OperationLog(_operationsDir, _retention);
+                    var record = log.Latest();
+                    if (record is null) return (Result: (Organizer.UndoResult?)null, Found: false);
+                    var result = Organizer.Undo(record);
+                    log.DiscardLatest();
+                    return (Result: result, Found: true);
+                });
+                if (!outcome.Found) { StatusText = "没有可撤销的操作"; return false; }
+                SetErrorDetails(Array.Empty<OrganizeItem>(), outcome.Result!.Skipped);
+                StatusText = $"已撤销：还原 {outcome.Result.Restored}，跳过 {outcome.Result.Skipped.Count}";
                 return true;
             });
         }
