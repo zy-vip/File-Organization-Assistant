@@ -290,15 +290,16 @@ public class MainViewModel : ObservableObject
                     var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
                     if (movable.Count == 0 && templateErrors.Count == 0)
                         return (Result: (OrganizeResult?)null, Failed: (List<OrganizeItem>?)null,
-                                Skipped: (List<OrganizeItem>?)null, Handled: false);
+                                Skipped: (List<OrganizeItem>?)null, Previews: previews, Handled: false);
                     var (result, record) = Organizer.Execute(previews, _now());
                     if (record.Entries.Count > 0) new OperationLog(_operationsDir, _retention).Save(record);
-                    return (Result: result, Failed: result.Failed, Skipped: result.Skipped, Handled: true);
+                    return (Result: result, Failed: result.Failed, Skipped: result.Skipped, Previews: previews, Handled: true);
                 });
+                RenderPreviews(outcome.Previews!); // 恢复旧行为：整理时同步刷新预览表格（早退分支同样刷新）
                 if (!outcome.Handled)
                 {
                     StatusText = "没有需要整理的文件";
-                    return false; // 无任何可执行/可报告条目，不落空日志
+                    return false; // 无任何可执行/可报告条目，不落空日志；ErrorDetails 不动（与旧行为一致）
                 }
                 SetErrorDetails(outcome.Failed!, outcome.Skipped!);
                 StatusText = $"整理完成：成功 {outcome.Result!.Succeeded}，跳过 {outcome.Result.Skipped.Count}，失败 {outcome.Result.Failed.Count}";
