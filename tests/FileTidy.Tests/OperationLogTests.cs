@@ -74,4 +74,18 @@ public class OperationLogTests : IDisposable
         Assert.Single(latest!.Entries);
         Assert.Equal("C:\\b.txt", latest.Entries[0].Dest);
     }
+
+    [Fact]
+    public void Save_WritesCamelCaseJson()
+    {
+        var log = new OperationLog(_dir, 10);
+        log.Save(new OperationRecord { Timestamp = DateTime.Now, Entries = { new LogEntry { Source = "a", Dest = "d" } } });
+
+        var json = File.ReadAllText(Directory.GetFiles(_dir, "*.json").Single());
+
+        // 写侧格式守约：键为 camelCase，且不得出现 PascalCase 键
+        Assert.Contains("\"timestamp\"", json);
+        Assert.Contains("\"dest\":\"d\"", json);
+        Assert.DoesNotContain("Timestamp", json);
+    }
 }
