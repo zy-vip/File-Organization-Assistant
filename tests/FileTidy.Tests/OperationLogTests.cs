@@ -59,4 +59,19 @@ public class OperationLogTests : IDisposable
 
         Assert.Single(Directory.GetFiles(_dir, "*.json")); // 0 被钳制为 1 份
     }
+
+    [Fact]
+    public void Latest_ReadsLegacyPascalCaseLog()
+    {
+        // 旧版本序列化无选项，属性名为 PascalCase（Timestamp/Entries/Source/Dest）
+        File.WriteAllText(Path.Combine(_dir, "op-20260101000000000.json"),
+            "{\"Timestamp\":\"2026-01-01T00:00:00\",\"Entries\":[{\"Source\":\"C:\\\\a.txt\",\"Dest\":\"C:\\\\b.txt\"}]}");
+
+        var log = new OperationLog(_dir, 10);
+        var latest = log.Latest();
+
+        Assert.NotNull(latest);
+        Assert.Single(latest!.Entries);
+        Assert.Equal("C:\\b.txt", latest.Entries[0].Dest);
+    }
 }

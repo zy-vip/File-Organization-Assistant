@@ -19,6 +19,11 @@ public class OperationRecord
 /// <summary>操作日志：写盘、读取最近一份、作废、按保留份数清理</summary>
 public class OperationLog
 {
+    private static readonly JsonSerializerOptions LogOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true // 兼容旧版 PascalCase 日志
+    };
+
     private readonly string _dir;
     private readonly int _retention;
 
@@ -41,7 +46,7 @@ public class OperationLog
         var path = Path.Combine(_dir, baseName + ".json");
         for (var i = 1; File.Exists(path); i++)
             path = Path.Combine(_dir, $"{baseName}-{i}.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(record));
+        File.WriteAllText(path, JsonSerializer.Serialize(record, LogOptions));
         Trim();
     }
 
@@ -52,7 +57,7 @@ public class OperationLog
         if (file is null) return null;
         try
         {
-            return JsonSerializer.Deserialize<OperationRecord>(File.ReadAllText(file.FullName));
+            return JsonSerializer.Deserialize<OperationRecord>(File.ReadAllText(file.FullName), LogOptions);
         }
         catch (JsonException)
         {
