@@ -98,7 +98,6 @@ public class MainViewModel : ObservableObject
         AutoTidy = config.AutoTidyEnabled;
         StartWithWindows = config.StartWithWindows;
         AutoRenameOnConflict = config.AutoRenameOnConflict;
-        if (AutoTidy) _watcher.Watch(Rules.Select(r => r.SourcePath).ToArray());
     }
 
     /// <summary>订阅编辑器变更：编辑器文本输入走防抖保存（500ms 窗口内只写一次盘）</summary>
@@ -151,14 +150,24 @@ public class MainViewModel : ObservableObject
     }
 
     private const int SaveDebounceMs = 500;
+    /// <summary>保存失败提示文案：防抖与同步保存路径共用</summary>
+    private const string SaveFailedText = "保存失败：config 配置写入错误，请检查磁盘空间或权限";
     private CancellationTokenSource? _saveCts;
 
     /// <summary>结构操作立即落盘（规则增删、排序、开关切换、加载）；AddRule 除外——原行为不保存，靠后续编辑触发</summary>
     private void SaveNow()
     {
         _saveCts?.Cancel();
-        ApplyAndSave();
-        SyncWatchers();
+        // 同步路径同样要兜底：磁盘满/权限不足时给出提示，避免未处理异常崩溃
+        try
+        {
+            ApplyAndSave();
+            SyncWatchers();
+        }
+        catch (Exception)
+        {
+            StatusText = SaveFailedText;
+        }
     }
 
     /// <summary>编辑器输入防抖落盘：500ms 内连续变更只写一次</summary>
@@ -182,7 +191,7 @@ public class MainViewModel : ObservableObject
         catch (OperationCanceledException) { }
         catch (Exception)
         {
-            StatusText = "保存失败：config 配置写入错误，请检查磁盘空间或权限";
+            StatusText = SaveFailedText;
         }
     }
 
@@ -379,6 +388,8 @@ public class MainViewModel : ObservableObject
         await Task.Delay(AutoTidyDebounceMs);
         for (var attempt = 1; attempt <= AutoTidyMaxRetries; attempt++)
         {
+            // 防抖/重试等待期间用户可能关闭开关：立即停止
+            if (!AutoTidy) return;
             try
             {
                 await _queue.RunAsync(async () =>
@@ -396,10 +407,20 @@ public class MainViewModel : ObservableObject
                 });
                 return;
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException ex)
             {
-                if (attempt == AutoTidyMaxRetries) return; // 仍忙则丢弃本次触发，避免无限重试
-                await Task.Delay(AutoTidyRetryIntervalMs);
+                // 分流忙与真实失败：队列仍忙则重试；否则说明整理逻辑内部抛了 IOE（如保存失败），
+                // 按真实失败通知用户，避免重试 3 次后静默丢弃
+                if (_queue.IsBusy)
+                {
+                    if (attempt == AutoTidyMaxRetries) return; // 仍忙则丢弃本次触发，避免无限重试
+                    await Task.Delay(AutoTidyRetryIntervalMs);
+                }
+                else
+                {
+                    TidyCompleted?.Invoke($"自动整理失败：{ex.Message}");
+                    return;
+                }
             }
             catch (Exception ex)
             {

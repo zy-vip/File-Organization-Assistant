@@ -45,6 +45,7 @@ public partial class App : Application
     {
         _vm?.Shutdown();
         _tray?.Dispose();
+        _guard?.Dispose();
         base.OnExit(e);
     }
 }
