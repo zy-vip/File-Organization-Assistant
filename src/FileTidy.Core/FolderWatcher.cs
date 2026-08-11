@@ -3,6 +3,9 @@ namespace FileTidy.Core;
 /// <summary>文件夹监听：文件新增/重命名/变更触发事件；缓冲溢出时自动重建监听并触发一次重扫</summary>
 public sealed class FolderWatcher : IDisposable
 {
+    /// <summary>监听缓冲区大小（字节）：避免高频率文件变更导致的事件丢失</summary>
+    private const int WatchBufferSizeBytes = 64 * 1024;
+
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly object _lock = new();
     private bool _disposed;
@@ -16,7 +19,7 @@ public sealed class FolderWatcher : IDisposable
         var watcher = new FileSystemWatcher(folder)
         {
             IncludeSubdirectories = true,
-            InternalBufferSize = 64 * 1024
+            InternalBufferSize = WatchBufferSizeBytes
         };
         watcher.Created += OnChanged;
         watcher.Renamed += OnChanged;

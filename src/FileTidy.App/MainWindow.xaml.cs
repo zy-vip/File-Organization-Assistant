@@ -21,6 +21,9 @@ public partial class MainWindow : Window
         (DataContext as MainViewModel)?.Shutdown();
     }
 
+    /// <summary>拖拽判定阈值（像素）：小于该距离视为点击而非拖拽</summary>
+    private const double DragThreshold = 10;
+
     // 规则列表拖拽排序：在 ListBox 的 PreviewMouseLeftButtonDown 记录起点，MouseMove 开始拖动，Drop 完成重排
     private Point _dragStart;
     private RuleEditorViewModel? _dragged;
@@ -35,7 +38,7 @@ public partial class MainWindow : Window
     {
         if (_dragged is null || e.LeftButton != MouseButtonState.Pressed) return;
         var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _dragStart.X) < 10 && Math.Abs(pos.Y - _dragStart.Y) < 10) return;
+        if (Math.Abs(pos.X - _dragStart.X) < DragThreshold && Math.Abs(pos.Y - _dragStart.Y) < DragThreshold) return;
         if (sender is System.Windows.Controls.ListBox lb)
             DragDrop.DoDragDrop(lb, _dragged, DragDropEffects.Move);
     }
