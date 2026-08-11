@@ -16,13 +16,27 @@ public sealed class TrayIcon : IDisposable
         _vm = vm;
         _icon = new TaskbarIcon
         {
+            Icon = LoadIcon(),
             ToolTipText = "文件整理助手",
             ContextMenu = BuildMenu()
         };
         _icon.TrayMouseDoubleClick += (_, _) => ShowWindow();
-        // 自动整理完成 → 托盘通知（事件来自线程池，需调度回 UI 线程）
-        vm.TidyCompleted += msg => Application.Current.Dispatcher.Invoke(() =>
+        // 自动整理完成 → 托盘通知（事件来自线程池，异步调度回 UI 线程）
+        vm.TidyCompleted += msg => Application.Current.Dispatcher.BeginInvoke(() =>
             _icon.ShowBalloonTip("文件整理助手", msg, BalloonIcon.Info));
+    }
+
+    /// <summary>从当前可执行文件提取图标；失败时返回 null（不阻塞启动）</summary>
+    private static System.Drawing.Icon? LoadIcon()
+    {
+        try
+        {
+            return System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "");
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private ContextMenu BuildMenu()
