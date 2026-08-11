@@ -213,6 +213,37 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Tidy_TemplateErrorOnly_StillRunsAndReportsFailure()
+    {
+        // 回归：仅有模板错误条目时不得早退，须执行整理并展示失败计数（本改动核心语义）
+        var dir = Directory.CreateTempSubdirectory("vmTpl").FullName;
+        try
+        {
+            var srcDir = Path.Combine(dir, "src"); var targetDir = Path.Combine(dir, "target");
+            var opsDir = Path.Combine(dir, "ops");
+            Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+            Directory.CreateDirectory(opsDir); // 显式创建，便于断言"无日志文件"
+            File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
+
+            var vm = new MainViewModel(new SettingsService(Path.Combine(dir, "config.json")),
+                coreTimeProvider: () => DateTime.Now, operationsDir: opsDir);
+            vm.Rules.Add(new Rule
+            {
+                Name = "模板缺组", SourcePath = srcDir, TargetPath = targetDir,
+                Conditions = { new RegexCondition { Pattern = "jpg" } }, // 无捕获组
+                Actions = { new MoveAndRenameAction { Template = "{1}{ext}" } } // 引用缺失捕获组 → 预览 TemplateError
+            });
+
+            await vm.TidyCommand.ExecuteAsync();
+
+            Assert.Contains("失败 1", vm.StatusText); // 整理仍执行，未走"没有需要整理的文件"早退
+            Assert.Contains("模板错误", vm.ErrorDetails);
+            Assert.Empty(Directory.GetFiles(opsDir, "*.json")); // TemplateError 只计失败、不产生日志条目，不落空日志
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void MoveRule_ReordersAndPersists()
     {
         var dir = Directory.CreateTempSubdirectory("vm3").FullName;
