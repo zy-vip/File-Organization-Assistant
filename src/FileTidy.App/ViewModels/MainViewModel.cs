@@ -194,7 +194,7 @@ public class MainViewModel : ObservableObject
     /// <summary>是否有明细需要展示（供 XAML 可见性绑定）</summary>
     public bool HasErrorDetails => ErrorDetails is not null;
 
-        private void SetErrorDetails(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
+    private void SetErrorDetails(IReadOnlyList<OrganizeItem> failed, IReadOnlyList<OrganizeItem> skipped)
     {
         var lines = new List<string>();
         lines.AddRange(failed.Select(f => $"失败：{f.Source} → {f.Dest}：{f.Reason}"));
@@ -285,8 +285,8 @@ public class MainViewModel : ObservableObject
                 var previews = BuildPreview();
                 // 传完整批次给 Organizer：TemplateError 计失败、Moved 执行移动，其余（未命中/冲突）自动忽略
                 var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                var blocked = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
-                if (movable.Count == 0 && blocked.Count == 0)
+                var templateErrors = previews.Where(p => p.Status == PreviewStatus.TemplateError).ToList();
+                if (movable.Count == 0 && templateErrors.Count == 0)
                 {
                     StatusText = "没有需要整理的文件";
                     return false; // 无任何可执行/可报告条目，不落空日志
@@ -350,12 +350,13 @@ public class MainViewModel : ObservableObject
         await Task.Delay(3000);
         try
         {
-await _queue.RunAsync(async () =>
+            await _queue.RunAsync(async () =>
             {
-await Task.Yield();
-                    var previews = BuildPreview(render: false);
-                    // 传完整批次：TemplateError 计入失败统计
-                    var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                await Task.Yield();
+                var previews = BuildPreview(render: false);
+                // 传完整批次：TemplateError 计入失败统计；但无 Moved 文件时直接早退（静默，
+                // 不触发 TidyCompleted，与手动模式会报告失败不对称——既有语义，保持不重构）
+                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
                 if (movable.Count == 0) return false;
                 var (result, record) = Organizer.Execute(previews, _now());
                 new OperationLog(_operationsDir, _retention).Save(record);

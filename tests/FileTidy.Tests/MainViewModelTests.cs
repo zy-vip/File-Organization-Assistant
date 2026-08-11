@@ -263,6 +263,31 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Undo_MissingTarget_ReportsSkippedInStatusAndDetails()
+    {
+        // 回归：VM 层 skipped 报告链路（StatusText 计数 + ErrorDetails 跳过行）。
+        // 整理路径的 skipped（预览后文件被删）在 TidyAsync 中预览与执行原子进行、无法确定性构造，
+        // 故经撤销路径触发同一报告机制：整理成功 → 删除目标 → 撤销时文件缺失即 Skipped。
+        var srcDir = Path.Combine(_dir, "src"); var targetDir = Path.Combine(_dir, "target");
+        var opsDir = Path.Combine(_dir, "ops");
+        Directory.CreateDirectory(srcDir); Directory.CreateDirectory(targetDir);
+        File.WriteAllText(Path.Combine(srcDir, "a.jpg"), "x");
+
+        var vm = NewVm(opsDir);
+        vm.AddRule();
+        vm.SelectedEditor!.Name = "图片"; vm.SelectedEditor.SourcePath = srcDir; vm.SelectedEditor.TargetPath = targetDir;
+        vm.SelectedEditor.AddExtension("jpg");
+        await vm.TidyCommand.ExecuteAsync();
+        Assert.True(File.Exists(Path.Combine(targetDir, "a.jpg")));
+
+        File.Delete(Path.Combine(targetDir, "a.jpg")); // 模拟目标文件已被外部删除
+        await vm.UndoCommand.ExecuteAsync();
+
+        Assert.Contains("跳过 1", vm.StatusText);
+        Assert.Contains("跳过：", vm.ErrorDetails);
+    }
+
+    [Fact]
     public async Task Preview_PopulatesStatusEnum()
     {
         var dir = Directory.CreateTempSubdirectory("vmPrev").FullName;
