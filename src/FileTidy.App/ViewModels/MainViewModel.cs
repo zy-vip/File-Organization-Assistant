@@ -394,33 +394,47 @@ public class MainViewModel : ObservableObject
         finally { Busy = false; }
     }
 
+    /// <summary>自动整理触发后的延迟：等待写文件完成，避免读到半成品</summary>
+    private const int AutoTidyDebounceMs = 3000;
+    /// <summary>队列忙时重试间隔与上限</summary>
+    private const int AutoTidyRetryIntervalMs = 500;
+    private const int AutoTidyMaxRetries = 3;
+
     /// <summary>自动整理：开关关闭时忽略触发事件；完成后触发 TidyCompleted 供托盘通知</summary>
     public event Action<string>? TidyCompleted;
 
     private async Task AutoTidyAsync()
     {
         if (!AutoTidy) return;
-        await Task.Delay(3000);
-        try
+        await Task.Delay(AutoTidyDebounceMs);
+        for (var attempt = 1; attempt <= AutoTidyMaxRetries; attempt++)
         {
-            await _queue.RunAsync(async () =>
+            try
             {
-                await Task.Yield();
-                var previews = BuildPreview(render: false);
-                // 传完整批次：TemplateError 计入失败统计；但无 Moved 文件时直接早退（静默，
-                // 不触发 TidyCompleted，与手动模式会报告失败不对称——既有语义，保持不重构）
-                var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
-                if (movable.Count == 0) return false;
-                var (result, record) = Organizer.Execute(previews, _now());
-                new OperationLog(_operationsDir, _retention).Save(record);
-                TidyCompleted?.Invoke($"自动整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}");
-                return true;
-            });
-        }
-        catch (InvalidOperationException) { }
-        catch (Exception ex)
-        {
-            TidyCompleted?.Invoke($"自动整理失败：{ex.Message}");
+                await _queue.RunAsync(async () =>
+                {
+                    var previews = BuildPreview(render: false);
+                    // 传完整批次：TemplateError 计入失败统计；但无 Moved 文件时直接早退（静默，
+                    // 不触发 TidyCompleted，与手动模式会报告失败不对称——既有语义，保持不重构）
+                    var movable = previews.Where(p => p.Status == PreviewStatus.Moved).ToList();
+                    if (movable.Count == 0) return false;
+                    var (result, record) = Organizer.Execute(previews, _now());
+                    new OperationLog(_operationsDir, _retention).Save(record);
+                    TidyCompleted?.Invoke($"自动整理完成：成功 {result.Succeeded}，跳过 {result.Skipped.Count}，失败 {result.Failed.Count}");
+                    return true;
+                });
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                if (attempt == AutoTidyMaxRetries) return; // 仍忙则丢弃本次触发，避免无限重试
+                await Task.Delay(AutoTidyRetryIntervalMs);
+            }
+            catch (Exception ex)
+            {
+                TidyCompleted?.Invoke($"自动整理失败：{ex.Message}");
+                return;
+            }
         }
     }
 
