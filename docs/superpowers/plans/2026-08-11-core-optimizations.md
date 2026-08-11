@@ -692,6 +692,8 @@ public void Latest_ReadsLegacyPascalCaseLog()
 
 Run: `dotnet test tests/FileTidy.Tests --filter FullyQualifiedName~ReadsLegacyPascalCase` — Expected: FAIL（属性名不匹配，Entries 为空）
 
+> **实测更正（2026-08-11）**：该测试对本变更**不可红**——CLR 属性名（Timestamp/Entries/Source/Dest）本就为 PascalCase，System.Text.Json 默认无命名策略时与旧日志属性完全精确匹配，实测实现前即 PASS。其价值在于：①若实现时漏掉 `PropertyNameCaseInsensitive = true`，Web 默认 CamelCase 策略会将旧日志键归一为 `timestamp` 后与 CLR `Timestamp` 做大小写敏感比较而失配（Entries 为空），测试即红；②与写侧断言用例（Step 1 追加的 `Save_WritesCamelCaseJson`）共同构成写读双向格式守约。写侧断言用例：Save 后 `File.ReadAllText` 断言含 `"timestamp"`/`"dest"` 且不含 `"Timestamp"`（实测：临时回退 Save 为默认 options 时该测试变红，恢复后 106 PASS）。
+
 - [ ] **Step 3: 实现**
 
 ```csharp
