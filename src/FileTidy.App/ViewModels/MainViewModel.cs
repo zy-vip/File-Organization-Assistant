@@ -413,6 +413,7 @@ public class MainViewModel : ObservableObject
             {
                 await _queue.RunAsync(async () =>
                 {
+                    await Task.Yield();
                     var previews = BuildPreview(render: false);
                     // 传完整批次：TemplateError 计入失败统计；但无 Moved 文件时直接早退（静默，
                     // 不触发 TidyCompleted，与手动模式会报告失败不对称——既有语义，保持不重构）
